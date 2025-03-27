@@ -90,24 +90,17 @@ def calculate_costs(instances, hours_per_month):
         print(" - Reserved Instances: https://aws.amazon.com/ec2/pricing/reserved-instances/")
         print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
 
-
-def main():
-    parser = argparse.ArgumentParser(description="Terraform EC2 Cost Optimization Tool")
-    parser.add_argument("-optimization", type=str, required=True, help="Optimization type (e.g., 'ec2')")
-    parser.add_argument("plan", nargs="?", help="Run Terraform plan", default=None)
-
-    args = parser.parse_args()
-
-    if args.optimization == "ec2" and args.plan == "plan":
+def main(hours_per_month=None):
+    """ Main function to run EC2 cost optimization logic """
+    if hours_per_month is None:
         hours_per_month = int(input("🔢 How many hours per month will you use EC2 instances? "))
-        terraform_data = get_terraform_plan()
-        instances = extract_ec2_instances(terraform_data)
-        if instances:
-            calculate_costs(instances, hours_per_month)
-        else:
-            print("❌ No EC2 instances found in Terraform plan.")
+
+    terraform_data = get_terraform_plan()
+    instances = extract_ec2_instances(terraform_data)
+    if instances:
+        calculate_costs(instances, hours_per_month)
     else:
-        print("❌ Invalid command. Use: terraoptim -optimization ec2 plan")
+        print("❌ No EC2 instances found in Terraform plan.")
 
 
 if __name__ == "__main__":

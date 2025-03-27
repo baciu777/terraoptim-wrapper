@@ -1,16 +1,21 @@
-# This is a sample Python script.
+#!/usr/bin/env python3
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+import argparse
+from ec2 import main as ec2_main  # Import the main function from ec2.py
 
+def main():
+    parser = argparse.ArgumentParser(description="Terraform Cost Optimization Tool")
+    parser.add_argument("-optimization", type=str, required=True, help="Optimization type")
+    parser.add_argument("plan", nargs="?", help="Run Terraform plan", default=None)
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+    args = parser.parse_args()
 
+    # Directly pass the optimization to the respective optimization method
+    if args.optimization == "ec2":
+        # If optimization is ec2, call the main function from ec2.py
+        ec2_main(args)
+    else:
+        print(f"❌ Unsupported optimization type: {args.optimization}")
 
-# Press the green button in the gutter to run the script.
-if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+if __name__ == "__main__":
+    main()
