@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
-from ec2 import main as ec2_main  # Import the main function from ec2.py
+from terraoptim.resources.ec2 import ec2_main
 
 def main():
     parser = argparse.ArgumentParser(description="Terraform Cost Optimization Tool")

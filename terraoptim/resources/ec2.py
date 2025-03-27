@@ -90,7 +90,7 @@ def calculate_costs(instances, hours_per_month):
         print(" - Reserved Instances: https://aws.amazon.com/ec2/pricing/reserved-instances/")
         print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
 
-def main(hours_per_month=None):
+def ec2_main(hours_per_month=None):
     """ Main function to run EC2 cost optimization logic """
     if hours_per_month is None:
         hours_per_month = int(input("🔢 How many hours per month will you use EC2 instances? "))
@@ -104,4 +104,4 @@ def main(hours_per_month=None):
 
 
 if __name__ == "__main__":
-    main()
+    ec2_main()
