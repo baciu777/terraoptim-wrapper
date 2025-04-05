@@ -6,6 +6,7 @@ import json
 from terraoptim.resources.ec2 import ec2_main
 from terraoptim.resources.lambda_functions import lambda_main
 
+
 def run_terraform_command(terraform_args):
     """Function to run terraform commands directly."""
     try:
@@ -41,51 +42,52 @@ def load_terraform_plan():
     except subprocess.CalledProcessError as e:
         print(f"❌ Failed to load terraform plan: {e}")
         raise e
-def parse_key_value_args(args):
-    """Parses arguments like key=value into a dictionary."""
-    kv_pairs = {}
-    for arg in args:
-        if "=" in arg:
-            key, value = arg.split("=", 1)
-            try:
-                kv_pairs[key] = int(value)
-            except ValueError:
-                kv_pairs[key] = value
-    return kv_pairs
-
 
 def process_optimizations(optimization_types, plan_data):
     """Process and execute the optimizations provided in the argument list."""
-    print(optimization_types)
 
+    print(optimization_types)
+    if optimization_types == []:
+        print("Running optimization without specific arguments...")
+        ec2_main(plan_data, None)
+        lambda_main(plan_data, None)
+        return
     i = 0
     while i < len(optimization_types):
-        optimization_type = optimization_types[i]
+        optimization_type = optimization_types[i].lstrip("-")
         i += 1
+        params = {}
 
-        additional_args = []
+        # Collect all key=value args until the next optimization type (e.g., ec2, lambda, etc.)
         while i < len(optimization_types) and "=" in optimization_types[i]:
-            additional_args.append(optimization_types[i])
+            key, value = optimization_types[i].split("=", 1)
+            # Try to convert numeric values
+            try:
+                value = int(value)
+            except ValueError:
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass  # Keep as string
+            params[key] = value
             i += 1
 
-        kv_args = parse_key_value_args(additional_args)
-
+        # Process the optimization types
         if optimization_type == "ec2":
-            hours = kv_args.get("hours", None)
-            if hours:
-                ec2_main(plan_data, hours)
-            else:
-                ec2_main(plan_data, None)
+            print(f"🔧 Running EC2 optimization with parameters: {params}")
+            ec2_main(plan_data, params)
 
         elif optimization_type == "lambda":
-            usage_data = {
-                "monthly_requests": kv_args.get("invocations", 0),
-                "avg_duration_ms": kv_args.get("seconds", 0) * 1000  # convert seconds to ms
-            }
-            lambda_main(plan_data, usage_data)
+            print(f"🔧 Running Lambda optimization with parameters: {params}")
+            lambda_main(plan_data, params)
+
+        elif optimization_type == "s3":
+            print(f"🔧 Running S3 optimization with parameters: {params}")
+            # s3_main(plan_data, params)
 
         else:
             print(f"❌ Unsupported optimization type: {optimization_type}")
+
 
 def main():
     try:

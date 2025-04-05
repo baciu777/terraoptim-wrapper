@@ -64,9 +64,7 @@ def suggest_alternatives(instance_type, hours_per_month, region):
         if not name.startswith(family_prefix):
             continue
 
-        print(name)
         price = get_ec2_on_demand_price(name, region)
-        print(price)
         if price and price > 0:
             monthly = round(price * (hours_per_month or 720), 3)
             candidates.append({
@@ -170,7 +168,6 @@ def calculate_costs(instances, hours_per_month, region):
             print(f"📊 Estimated Monthly Cost: {cost_monthly_spot} USD (Spot)")
 
             print("🔗 More Details:")
-            print(" - Reserved Instances: https://aws.amazon.com/ec2/pricing/reserved-instances/")
             print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
 
         # Additional: show hourly cost and monthly cost if no hours_per_month is provided
@@ -182,8 +179,11 @@ def calculate_costs(instances, hours_per_month, region):
 
         suggest_alternatives(instance, hours_per_month or 720, region)
 
-def ec2_main(terraform_data, hours_per_month=None):
+def ec2_main(terraform_data, params=None):
     """ Main function to run EC2 cost optimization logic """
+    hours_per_month = 720
+    if isinstance(params, dict):
+        hours_per_month = params.get("hours", 720)
     instances = extract_ec2_instances(terraform_data)
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     if instances:

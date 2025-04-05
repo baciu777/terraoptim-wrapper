@@ -63,37 +63,36 @@ def get_lambda_price(region, architecture="x86_64"):
 
     return gb_sec_price, request_price
 
-
-def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration_ms, region):
-    """Estimate Lambda function monthly cost."""
+def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
+    """Estimate Lambda function monthly cost without applying free tier."""
     mem_gb = lambda_func["memory"] / 1024
-    avg_duration_sec = avg_duration_ms / 1000
-    total_gb_seconds = monthly_requests * mem_gb * avg_duration_sec
+    total_gb_seconds = monthly_requests * mem_gb * avg_duration
 
     gb_sec_price, request_price = get_lambda_price(region, lambda_func["architecture"])
 
-    # Remove free tier
-    billable_requests = max(monthly_requests - FREE_TIER_REQUESTS, 0)
-    billable_gb_sec = max(total_gb_seconds - FREE_TIER_GB_SEC, 0)
-
-    request_cost = round(billable_requests * request_price, 4)
-    compute_cost = round(billable_gb_sec * gb_sec_price, 4)
-    total = round(request_cost + compute_cost, 4)
+    request_cost = monthly_requests * request_price
+    compute_cost = total_gb_seconds * gb_sec_price
+    total = request_cost + compute_cost
 
     return {
         "function_name": lambda_func["name"],
         "memory": lambda_func["memory"],
         "architecture": lambda_func["architecture"],
         "requests": monthly_requests,
-        "duration_ms": avg_duration_ms,
-        "compute_cost": compute_cost,
-        "request_cost": request_cost,
-        "total_cost": total
+        "duration": avg_duration,
+        "compute_cost": round(compute_cost, 4),
+        "request_cost": round(request_cost, 4),
+        "total_cost": round(total, 4),
+        "raw_gb_sec": total_gb_seconds,
+        "raw_requests": monthly_requests
     }
 
 
-def lambda_main(terraform_data, usage_data=None):
+def lambda_main(terraform_data, params=None):
     """Main entry for Lambda analysis (requires usage_data: invocations + duration)."""
+
+
+
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     functions = extract_lambda_functions(terraform_data)
 
@@ -102,20 +101,54 @@ def lambda_main(terraform_data, usage_data=None):
         return
 
     print(f"\n🔍 Found {len(functions)} Lambda function(s):")
+    total_gb_seconds = 0
+    total_invocations = 0
+    total_compute_cost = 0
+    total_request_cost = 0
 
     for func in functions:
-        usage = usage_data.get(func["name"], {}) if usage_data else {}
-        monthly_invocations = usage.get("monthly_requests", 1000000)
-        avg_duration = usage.get("avg_duration_ms", func["timeout"] * 1000)
+        invocations = 1000000
+        duration = func["timeout"]
+        if isinstance(params, dict):
+            invocations = params.get("invocations", 1000000)
+            duration = params.get("duration", func["timeout"])
 
-        cost = estimate_lambda_cost(func, monthly_invocations, avg_duration, region)
+        cost = estimate_lambda_cost(func, invocations, duration, region)
+
+        total_gb_seconds += cost["raw_gb_sec"]
+        total_invocations += cost["raw_requests"]
 
         print(f"\n⚙️ Function: {cost['function_name']} ({cost['architecture']})")
-        print(f"💾 Memory: {cost['memory']} MB | Avg Duration: {cost['duration_ms']} ms")
+        print(f"💾 Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
         print(f"📈 Invocations: {cost['requests']} / month")
-        print(f"💸 Compute Cost: ${cost['compute_cost']}")
-        print(f"💸 Request Cost: ${cost['request_cost']}")
-        print(f"📊 Total Estimated Monthly Cost: ${cost['total_cost']}")
+        print(f"💸 Compute Cost (before free tier): ${cost['compute_cost']}")
+        print(f"💸 Request Cost (before free tier): ${cost['request_cost']}")
+        print(f"📊 Total (before free tier): ${cost['total_cost']}")
         if func["architecture"] == "x86_64":
             print("💡 Tip: Consider switching to `arm64` (Graviton2) for ~20% lower cost.")
 
+    print("\n🧾 AWS Free Tier Limits:")
+    print(f" - {FREE_TIER_REQUESTS:,} requests / month")
+    print(f" - {FREE_TIER_GB_SEC:,} GB-seconds / month")
+
+    billable_requests = max(total_invocations - FREE_TIER_REQUESTS, 0)
+    billable_gb_sec = max(total_gb_seconds - FREE_TIER_GB_SEC, 0)
+
+    gb_sec_price, request_price = get_lambda_price(region)
+    final_request_cost = round(billable_requests * request_price, 3)
+    final_compute_cost = round(billable_gb_sec * gb_sec_price, 3)
+    final_total_cost = round(final_request_cost + final_compute_cost, 3)
+
+    print(f"\n📉 Total Usage This Month:")
+    print(f" - GB-seconds used: {round(total_gb_seconds):,} (Billable: {round(billable_gb_sec):,})")
+    print(f" - Invocations: {total_invocations:,} (Billable: {billable_requests:,})")
+
+    print(f"\n💰 Final Monthly Cost After Free Tier:")
+    print(f" - Compute Cost: ${final_compute_cost}")
+    print(f" - Request Cost: ${final_request_cost}")
+    print(f" - Total Estimated Monthly Cost: ${final_total_cost}")
+
+    if final_total_cost > 0:
+        print("🚨 Free tier exceeded. You may incur charges.")
+    else:
+        print("✅ You're still within the AWS Free Tier limits.")
