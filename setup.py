@@ -9,7 +9,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'terraoptim=terraoptim:main',
+            'terraoptim=terraoptim.main:main',
         ],
     },
 )
