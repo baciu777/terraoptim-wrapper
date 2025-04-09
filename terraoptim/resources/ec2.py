@@ -161,21 +161,15 @@ def calculate_costs(instances, hours_per_month, region):
         if is_spot:
             print("⚠️ Using Spot Instances – consider switching to On-Demand if stability is needed.")
 
-        if hours_per_month is not None:
-            cost_monthly_on_demand = round(on_demand_price * hours_per_month, 3) if on_demand_price else "N/A"
-            cost_monthly_spot = round(spot_price * hours_per_month, 3) if spot_price else "N/A"
-            print(f"📊 Estimated Monthly Cost: {cost_monthly_on_demand} USD (On-Demand)")
-            print(f"📊 Estimated Monthly Cost: {cost_monthly_spot} USD (Spot)")
+        cost_monthly_on_demand = round(on_demand_price * hours_per_month, 3) if on_demand_price else "N/A"
+        cost_monthly_spot = round(spot_price * hours_per_month, 3) if spot_price else "N/A"
+        print(f"📊 Monthly Estimation Cost: {cost_monthly_on_demand} USD (On-Demand)")
+        print(f"📊 Monthly Estimation Cost: {cost_monthly_spot} USD (Spot)")
 
-            print("🔗 More Details:")
-            print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
+        print("🔗 More Details:")
+        print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
 
-        # Additional: show hourly cost and monthly cost if no hours_per_month is provided
-        else:
-            default_hours_per_month = 720  # Assume 720 hours (30 days * 24 hours)
-            cost_monthly_default = on_demand_price * default_hours_per_month
-            print(f"📊 Estimated Monthly Cost (30 Days Non-Stop): {cost_monthly_default} USD (On-Demand)")
-            print(f"📊 Estimated Monthly Cost (30 Days Non-Stop): {spot_price * default_hours_per_month} USD (Spot)")
+
 
         suggest_alternatives(instance, hours_per_month or 720, region)
 
@@ -184,7 +178,7 @@ def ec2_main(terraform_data, params=None):
     hours_per_month = 720
     if isinstance(params, dict):
         hours_per_month = params.get("hours", 720)
-    instances = extract_ec2_instances(terraform_data)
+    instances = extract_ec2_instances(terraform_data) if terraform_data else []
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     if instances:
         global INSTANCE_CATEGORIES

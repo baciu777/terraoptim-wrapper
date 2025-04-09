@@ -5,6 +5,7 @@ import subprocess
 import json
 from terraoptim.resources.ec2 import ec2_main
 from terraoptim.resources.lambda_functions import lambda_main
+from terraoptim.resources.s3 import s3_main
 
 
 def run_terraform_command(terraform_args):
@@ -51,6 +52,7 @@ def process_optimizations(optimization_types, plan_data):
         print("Running optimization without specific arguments...")
         ec2_main(plan_data, None)
         lambda_main(plan_data, None)
+        s3_main(plan_data, None)
         return
     i = 0
     while i < len(optimization_types):
@@ -83,7 +85,7 @@ def process_optimizations(optimization_types, plan_data):
 
         elif optimization_type == "s3":
             print(f"🔧 Running S3 optimization with parameters: {params}")
-            # s3_main(plan_data, params)
+            s3_main(plan_data, params)
 
         else:
             print(f"❌ Unsupported optimization type: {optimization_type}")

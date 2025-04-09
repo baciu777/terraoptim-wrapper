@@ -29,7 +29,7 @@ def extract_lambda_functions(terraform_data):
 
 def get_lambda_price(region, architecture="x86_64"):
     """Fetch Lambda pricing per GB-second and per request."""
-    client = boto3.client("pricing", region_name="us-east-1")  # Lambda pricing is global
+    client = boto3.client("pricing", region_name=region)  # Lambda pricing is global
 
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
     filters = [
@@ -94,7 +94,7 @@ def lambda_main(terraform_data, params=None):
 
 
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    functions = extract_lambda_functions(terraform_data)
+    functions = extract_lambda_functions(terraform_data) if terraform_data else []
 
     if not functions:
         print("❌ No Lambda functions found in Terraform plan.")
@@ -103,8 +103,6 @@ def lambda_main(terraform_data, params=None):
     print(f"\n🔍 Found {len(functions)} Lambda function(s):")
     total_gb_seconds = 0
     total_invocations = 0
-    total_compute_cost = 0
-    total_request_cost = 0
 
     for func in functions:
         invocations = 1000000
@@ -148,7 +146,3 @@ def lambda_main(terraform_data, params=None):
     print(f" - Request Cost: ${final_request_cost}")
     print(f" - Total Estimated Monthly Cost: ${final_total_cost}")
 
-    if final_total_cost > 0:
-        print("🚨 Free tier exceeded. You may incur charges.")
-    else:
-        print("✅ You're still within the AWS Free Tier limits.")
