@@ -167,9 +167,9 @@ def s3_main(terraform_data=None, params=None):
 
         # Print total costs before applying free tier
         print("\n📊 Total (before free tier):")
-        print(f" - Storage: {storage_gb} GB | Cost: ${total_storage_cost}")
-        print(f" - PUT Requests: {put_requests} | Cost: ${total_put_cost}")
-        print(f" - GET Requests: {get_requests} | Cost: ${total_get_cost}")
+        print(f" - Storage Cost: ${total_storage_cost}")
+        print(f" - PUT Requests Cost: ${total_put_cost}")
+        print(f" - GET Requests Cost: ${total_get_cost}")
 
         # Free Tier Limits
         print("\n🧾 AWS Free Tier Limits:")
@@ -188,7 +188,6 @@ def s3_main(terraform_data=None, params=None):
 
         total = cost_storage + cost_put + cost_get
 
-        # Print costs after applying free tier
         print(f"\n📉 Total Usage This Month (Billable):")
         print(f" - Storage: {billable_storage} GB (Billable) | Cost: ${cost_storage}")
         print(f" - PUT Requests: {billable_put_requests} (Billable) | Cost: ${cost_put}")
