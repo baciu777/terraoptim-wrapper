@@ -29,7 +29,7 @@ def extract_lambda_functions(terraform_data):
 
 def get_lambda_price(region, architecture="x86_64"):
     """Fetch Lambda pricing per GB-second and per request."""
-    client = boto3.client("pricing", region_name=region)  # Lambda pricing is global
+    client = boto3.client("pricing", region_name="us-east-1")
 
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
     filters = [
@@ -86,12 +86,8 @@ def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
         "raw_gb_sec": total_gb_seconds,
         "raw_requests": monthly_requests
     }
-
-
 def lambda_main(terraform_data, params=None):
     """Main entry for Lambda analysis (requires usage_data: invocations + duration)."""
-
-
 
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     functions = extract_lambda_functions(terraform_data) if terraform_data else []
@@ -100,16 +96,23 @@ def lambda_main(terraform_data, params=None):
         print("❌ No Lambda functions found in Terraform plan.")
         return
 
+    # Default usage assumptions
+    user_defaults = {
+        "invocations": 1_000_000,
+        "duration": None  # will default to function timeout per-function
+    }
+
+    if isinstance(params, dict):
+        user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
+        user_defaults["duration"] = params.get("duration", user_defaults["duration"])
+
     print(f"\n🔍 Found {len(functions)} Lambda function(s):")
     total_gb_seconds = 0
     total_invocations = 0
 
     for func in functions:
-        invocations = 1000000
-        duration = func["timeout"]
-        if isinstance(params, dict):
-            invocations = params.get("invocations", 1000000)
-            duration = params.get("duration", func["timeout"])
+        invocations = user_defaults["invocations"]
+        duration = user_defaults["duration"] if user_defaults["duration"] is not None else func["timeout"]
 
         cost = estimate_lambda_cost(func, invocations, duration, region)
 
@@ -122,6 +125,7 @@ def lambda_main(terraform_data, params=None):
         print(f"💸 Compute Cost (before free tier): ${cost['compute_cost']}")
         print(f"💸 Request Cost (before free tier): ${cost['request_cost']}")
         print(f"📊 Total (before free tier): ${cost['total_cost']}")
+
         if func["architecture"] == "x86_64":
             print("💡 Tip: Consider switching to `arm64` (Graviton2) for ~20% lower cost.")
 
@@ -145,4 +149,3 @@ def lambda_main(terraform_data, params=None):
     print(f" - Compute Cost: ${final_compute_cost}")
     print(f" - Request Cost: ${final_request_cost}")
     print(f" - Total Estimated Monthly Cost: ${final_total_cost}")
-

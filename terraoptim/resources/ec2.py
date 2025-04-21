@@ -94,7 +94,7 @@ def suggest_alternatives(instance_type, hours_per_month, region):
 
 def get_ec2_on_demand_price(instance_type, region):
     """ Fetch EC2 price using AWS Pricing API """
-    client = boto3.client("pricing", region_name=region)
+    client = boto3.client("pricing", region_name="us-east-1")
     response = client.get_products(
         ServiceCode="AmazonEC2",
         Filters=[
@@ -175,14 +175,25 @@ def calculate_costs(instances, hours_per_month, region):
 
 def ec2_main(terraform_data, params=None):
     """ Main function to run EC2 cost optimization logic """
-    hours_per_month = 720
-    if isinstance(params, dict):
-        hours_per_month = params.get("hours", 720)
-    instances = extract_ec2_instances(terraform_data) if terraform_data else []
+
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    if instances:
-        global INSTANCE_CATEGORIES
-        INSTANCE_CATEGORIES = fetch_ec2_instance_types(region)
-        calculate_costs(instances, hours_per_month, region)
-    else:
+    instances = extract_ec2_instances(terraform_data) if terraform_data else []
+
+    if not instances:
         print("❌ No EC2 instances found in Terraform plan.")
+        return
+
+    user_defaults = {
+        "hours": 720
+    }
+
+    if isinstance(params, dict):
+        user_defaults["hours"] = params.get("hours", user_defaults["hours"])
+
+
+
+    global INSTANCE_CATEGORIES
+    INSTANCE_CATEGORIES = fetch_ec2_instance_types(region)
+
+    calculate_costs(instances, user_defaults["hours"], region)
+

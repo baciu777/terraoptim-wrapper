@@ -4,6 +4,7 @@ import argparse
 import subprocess
 import json
 from terraoptim.resources.ec2 import ec2_main
+from terraoptim.resources.glue import glue_main
 from terraoptim.resources.lambda_functions import lambda_main
 from terraoptim.resources.s3 import s3_main
 from terraoptim.resources.dynamodb import dynamodb_main
@@ -56,6 +57,7 @@ def process_optimizations(optimization_types, plan_data):
         lambda_main(plan_data, None)
         s3_main(plan_data, None)
         dynamodb_main(plan_data,None)
+        glue_main(plan_data,None)
         return
     i = 0
     while i < len(optimization_types):
@@ -92,6 +94,9 @@ def process_optimizations(optimization_types, plan_data):
         elif optimization_type == "dynamodb":
             print(f"🔧 Running DynamoDB optimization with parameters: {params}")
             dynamodb_main(plan_data, params)
+        elif optimization_type == "glue":
+            print(f"🔧 Running Glue optimization with parameters: {params}")
+            glue_main(plan_data, params)
         else:
             print(f"❌ Unsupported optimization type: {optimization_type}")
 

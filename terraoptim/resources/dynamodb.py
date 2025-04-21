@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
+import math
 
 import boto3
 import json
 
-from terraoptim.common.utils import REGION_NAME_MAP, extract_region_from_terraform_plan
+from terraoptim.common.utils import REGION_NAME_MAP, extract_region_from_terraform_plan, REGION_CODE_MAP
 
 # AWS Free Tier for DynamoDB
 FREE_TIER_READ_CAPACITY = 25  # units
@@ -11,9 +12,13 @@ FREE_TIER_WRITE_CAPACITY = 25  # units
 FREE_TIER_STORAGE_GB = 25  # GB
 HOURS_PER_MONTH = 730
 
+
 def get_dynamodb_price_provisioned(region, usage_type):
-    pricing = boto3.client("pricing", region_name=region)
+    pricing = boto3.client("pricing", region_name="us-east-1")
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
+    region_prefix = REGION_CODE_MAP.get(region, "")
+    if region_prefix and region != "us-east-1":  # for us-east-1 there is no prefix
+        usage_type = f"{region_prefix}-{usage_type}"
 
     try:
         response = pricing.get_products(
@@ -31,9 +36,9 @@ def get_dynamodb_price_provisioned(region, usage_type):
 
                 for dim in price_dimensions.values():
                     description = dim.get("description", "")
-                    price_per_unit = dim.get("pricePerUnit", {}).get("USD")
-                    if description and 'beyond the free tier' in description and price_per_unit:
-                        return float(price_per_unit)
+                    price = dim.get("pricePerUnit", {}).get("USD")
+                    if description and 'beyond the free tier' in description or 'storage used beyond' in description:
+                        return float(price)
 
     except Exception as e:
         print(f"⚠️ Error fetching price for {usage_type}: {e}")
@@ -41,9 +46,11 @@ def get_dynamodb_price_provisioned(region, usage_type):
 
 
 def get_dynamodb_price_on_demand(region, usage_type):
-    pricing = boto3.client("pricing", region_name=region)  # must be us-east-1 for Pricing API
+    pricing = boto3.client("pricing", region_name="us-east-1")
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
-
+    region_prefix = REGION_CODE_MAP.get(region, "")
+    if region_prefix and region != "us-east-1":  # for us-east-1 there is no prefix
+        usage_type = f"{region_prefix}-{usage_type}"
     try:
         response = pricing.get_products(
             ServiceCode="AmazonDynamoDB",
@@ -53,14 +60,12 @@ def get_dynamodb_price_on_demand(region, usage_type):
 
             ]
         )
-        print(response)
         for product_json in response["PriceList"]:
             product = json.loads(product_json)
             terms = product.get("terms", {}).get("OnDemand", {})
             for term in terms.values():
                 price_dimensions = term.get("priceDimensions", {})
                 for dim in price_dimensions.values():
-                    desc = dim.get("description", "").lower()
                     price = dim.get("pricePerUnit", {}).get("USD")
                     return float(price)
 
@@ -68,6 +73,7 @@ def get_dynamodb_price_on_demand(region, usage_type):
         print(f"⚠️ Error: {e}")
 
     return None
+
 
 def extract_dynamodb_tables(terraform_data):
     tables = []
@@ -78,20 +84,19 @@ def extract_dynamodb_tables(terraform_data):
             billing_mode = after.get("billing_mode", "PROVISIONED")
             read_capacity = after.get("read_capacity", 0)
             write_capacity = after.get("write_capacity", 0)
-            storage_gb = after.get("estimated_storage_gb", 0)  # You may want to estimate this differently
             tables.append({
                 "name": table_name,
                 "billing_mode": billing_mode,
                 "read_capacity": read_capacity,
-                "write_capacity": write_capacity,
-                "storage_gb": storage_gb
+                "write_capacity": write_capacity
             })
     return tables
 
-def calculate_table_cost(table, prices, on_demand_defaults):
+
+def calculate_table_cost(table, prices, user_defaults):
     billing = table.get("billing_mode", "PROVISIONED").upper()
-    storage = table.get("storage_gb", 5)
-    storage_cost = round(storage * HOURS_PER_MONTH * prices["storage"], 3)
+    storage = user_defaults["storage_gb"]
+    storage_cost = round(storage * prices["storage"], 3)
 
     if billing == "PROVISIONED":
         read = table.get("read_capacity")
@@ -109,8 +114,9 @@ def calculate_table_cost(table, prices, on_demand_defaults):
         }
 
     elif billing == "PAY_PER_REQUEST":
-        read = on_demand_defaults["reads"]
-        write = on_demand_defaults["writes"]
+        read = user_defaults["reads"]
+        write = user_defaults["writes"]
+
         cost_read = round(read * prices["read_ondemand"], 3)
         cost_write = round(write * prices["write_ondemand"], 3)
         return {
@@ -123,8 +129,7 @@ def calculate_table_cost(table, prices, on_demand_defaults):
             "cost_storage": storage_cost
         }
 
-    return None  # Unknown billing mode
-
+    return None
 
 
 def apply_free_tier(total_read, total_write, total_storage, prices):
@@ -133,9 +138,9 @@ def apply_free_tier(total_read, total_write, total_storage, prices):
     billable_storage = max(total_storage - FREE_TIER_STORAGE_GB, 0)
 
     discount = (
-        round((total_read - billable_read) * HOURS_PER_MONTH * prices["read_prov"], 3) +
-        round((total_write - billable_write) * HOURS_PER_MONTH * prices["write_prov"], 3) +
-        round((total_storage - billable_storage) * HOURS_PER_MONTH * prices["storage"], 3)
+            round((total_read - billable_read) * HOURS_PER_MONTH * prices["read_prov"], 3) +
+            round((total_write - billable_write) * HOURS_PER_MONTH * prices["write_prov"], 3) +
+            round((total_storage - billable_storage) * prices["storage"], 3)
     )
 
     return {
@@ -146,22 +151,46 @@ def apply_free_tier(total_read, total_write, total_storage, prices):
     }
 
 
+def recommend_billing_mode(reads, writes, prices):
+    seconds_per_month = 30 * 24 * 60 * 60
+    provisioned_read_units = math.ceil(reads / seconds_per_month)
+    provisioned_write_units = math.ceil(writes / seconds_per_month)
+
+    cost_provisioned = (
+            provisioned_read_units * HOURS_PER_MONTH * prices["read_prov"] +
+            provisioned_write_units * HOURS_PER_MONTH * prices["write_prov"]
+    )
+    cost_on_demand = (
+            reads * prices["read_ondemand"] +
+            writes * prices["write_ondemand"]
+    )
+
+    recommendation = "PAY_PER_REQUEST" if cost_on_demand < cost_provisioned else "PROVISIONED"
+
+    return {
+        "estimated_cost_provisioned": round(cost_provisioned, 2),
+        "estimated_cost_on_demand": round(cost_on_demand, 2),
+        "recommendation": recommendation
+    }
+
 
 def dynamodb_main(terraform_data=None, params=None):
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     tables = extract_dynamodb_tables(terraform_data) if terraform_data else []
 
-    on_demand_defaults = {
-        "reads": 1_000_000,
-        "writes": 500_000
-    }
-    if isinstance(params, dict):
-        on_demand_defaults["reads"] = params.get("on_demand_reads", on_demand_defaults["reads"])
-        on_demand_defaults["writes"] = params.get("on_demand_writes", on_demand_defaults["writes"])
-
     if not tables:
         print("ℹ️ No DynamoDB tables found in Terraform data.")
         return
+
+    user_defaults = {
+        "reads": 1_000_000,
+        "writes": 500_000,
+        "storage": 10
+    }
+    if isinstance(params, dict):
+        user_defaults["reads"] = params.get("reads", user_defaults["reads"])
+        user_defaults["writes"] = params.get("writes", user_defaults["writes"])
+        user_defaults["storage_gb"] = params.get("storage", user_defaults["storage"])
 
     prices = {
         "read_prov": get_dynamodb_price_provisioned(region, "ReadCapacityUnit-Hrs"),
@@ -170,7 +199,6 @@ def dynamodb_main(terraform_data=None, params=None):
         "read_ondemand": get_dynamodb_price_on_demand(region, "ReadRequestUnits"),
         "write_ondemand": get_dynamodb_price_on_demand(region, "WriteRequestUnits"),
     }
-
     if not all(prices.values()):
         print("❌ Unable to retrieve all required prices.")
         return
@@ -184,7 +212,7 @@ def dynamodb_main(terraform_data=None, params=None):
 
     for table in tables:
         name = table["name"]
-        result = calculate_table_cost(table, prices, on_demand_defaults)
+        result = calculate_table_cost(table, prices, user_defaults)
 
         if result is None:
             print(f"🔹 Table: {name} | ⚠️ Unknown billing mode. Skipping...\n")
@@ -214,3 +242,14 @@ def dynamodb_main(terraform_data=None, params=None):
     print(f" - Free Tier Discount: ${tier['discount']}")
     print(f"💰 Estimated Monthly Cost (All Tables): ${adjusted_cost}")
     print("\n🔗 https://aws.amazon.com/dynamodb/pricing/")
+
+    rec = recommend_billing_mode(
+        reads=user_defaults["reads"],
+        writes=user_defaults["writes"],
+        prices=prices
+    )
+
+    print("\n🧠 Recommendation Based on Usage:")
+    print(f" - Cost if Provisioned: ${rec['estimated_cost_provisioned']}")
+    print(f" - Cost if Pay-Per-Request: ${rec['estimated_cost_on_demand']}")
+    print(f" 👉 Recommended Billing Mode: {rec['recommendation']}")
