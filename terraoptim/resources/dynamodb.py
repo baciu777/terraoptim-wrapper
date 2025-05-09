@@ -41,7 +41,7 @@ def get_dynamodb_price_provisioned(region, usage_type):
                         return float(price)
 
     except Exception as e:
-        print(f"⚠️ Error fetching price for {usage_type}: {e}")
+        print(f"️ Error fetching price for {usage_type}: {e}")
     return None
 
 
@@ -70,7 +70,7 @@ def get_dynamodb_price_on_demand(region, usage_type):
                     return float(price)
 
     except Exception as e:
-        print(f"⚠️ Error: {e}")
+        print(f"️ Error: {e}")
 
     return None
 
@@ -80,12 +80,10 @@ def extract_dynamodb_tables(terraform_data):
     for resource in terraform_data.get("resource_changes", []):
         if resource["type"] == "aws_dynamodb_table":
             after = resource.get("change", {}).get("after", {})
-            table_name = after.get("name")
             billing_mode = after.get("billing_mode", "PROVISIONED")
             read_capacity = after.get("read_capacity", 0)
             write_capacity = after.get("write_capacity", 0)
             tables.append({
-                "name": table_name,
                 "billing_mode": billing_mode,
                 "read_capacity": read_capacity,
                 "write_capacity": write_capacity
@@ -95,7 +93,7 @@ def extract_dynamodb_tables(terraform_data):
 
 def calculate_table_cost(table, prices, user_defaults):
     billing = table.get("billing_mode", "PROVISIONED").upper()
-    storage = user_defaults["storage_gb"]
+    storage = user_defaults["storage"]
     storage_cost = round(storage * prices["storage"], 3)
 
     if billing == "PROVISIONED":
@@ -168,19 +166,94 @@ def recommend_billing_mode(reads, writes, prices):
     recommendation = "PAY_PER_REQUEST" if cost_on_demand < cost_provisioned else "PROVISIONED"
 
     return {
-        "estimated_cost_provisioned": round(cost_provisioned, 2),
-        "estimated_cost_on_demand": round(cost_on_demand, 2),
+        "estimated_cost_provisioned": round(cost_provisioned, 3),
+        "estimated_cost_on_demand": round(cost_on_demand, 3),
         "recommendation": recommendation
     }
 
+
+def calculate_dynamodb_table_costs(tables, prices, user_defaults):
+    total_cost = 0
+    total_prov_read = 0
+    total_prov_write = 0
+    total_storage = 0
+    results = []
+
+    for i, table in enumerate(tables):
+        result = calculate_table_cost(table, prices, user_defaults)
+        if result is None:
+            results.append({
+                "index": i,
+                "skipped": True
+            })
+            continue
+
+        subtotal = result["cost_read"] + result["cost_write"] + result["cost_storage"]
+        total_cost += subtotal
+        total_storage += result["storage"]
+
+        if result["mode"] == "PROVISIONED":
+            total_prov_read += result["read"]
+            total_prov_write += result["write"]
+
+        results.append({
+            "index": i,
+            "skipped": False,
+            "mode": result["mode"],
+            "read": result["read"],
+            "write": result["write"],
+            "storage": result["storage"],
+            "cost_read": result["cost_read"],
+            "cost_write": result["cost_write"],
+            "cost_storage": result["cost_storage"],
+            "subtotal": round(subtotal,3)
+        })
+
+    return results, total_prov_read, total_prov_write, total_storage, total_cost
+
+def print_dynamodb_table_costs(results):
+    for r in results:
+        if r["skipped"]:
+            print(f" Table {r['index']} | ⚠️ Unknown billing mode. Skipping...\n")
+            continue
+
+        print(f"  Table {r['index']} | Mode: {r['mode']}")
+        print(f"    Reads: {r['read']} | Writes: {r['write']} | Storage: {r['storage']} GB")
+        print(f"    Cost: Read ${r['cost_read']}, Write ${r['cost_write']}, "
+              f"Storage ${r['cost_storage']}, Total ${r['subtotal']}\n")
+
+def summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults):
+    tier = apply_free_tier(total_prov_read, total_prov_write, total_storage, prices)
+    adjusted_cost = round(total_cost - tier["discount"], 3)
+
+    print(" Totals After Free Tier (provisioned tables only):")
+    print(f"   Read Units (billable): {tier['billable_read']}")
+    print(f"   Write Units (billable): {tier['billable_write']}")
+    print(f"   Storage GB (billable): {tier['billable_storage']}")
+    print(f"   Free Tier Discount: ${tier['discount']}")
+    print(f" Total Estimated Monthly Cost For All Tables: ${adjusted_cost}")
+
+    rec = recommend_billing_mode(
+        reads=user_defaults["reads"],
+        writes=user_defaults["writes"],
+        prices=prices
+    )
+
+    print("\n  Recommendation Based on Usage (WITHOUT STORAGE COSTS):")
+    print(f"   Cost if Provisioned: ${rec['estimated_cost_provisioned']}")
+    print(f"   Cost if Pay-Per-Request: ${rec['estimated_cost_on_demand']}")
+    print(f"  Recommended Billing Mode: {rec['recommendation']}")
+    print("\n🔗 More info: https://aws.amazon.com/dynamodb/pricing/")
+    print("====================================================")
 
 def dynamodb_main(terraform_data=None, params=None):
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     tables = extract_dynamodb_tables(terraform_data) if terraform_data else []
 
     if not tables:
-        print("ℹ️ No DynamoDB tables found in Terraform data.")
+        print("️ No DynamoDB tables found in Terraform data.")
         return
+    print(f"\n Found {len(tables)} DynamoDB Tables:")
 
     user_defaults = {
         "reads": 1_000_000,
@@ -190,8 +263,15 @@ def dynamodb_main(terraform_data=None, params=None):
     if isinstance(params, dict):
         user_defaults["reads"] = params.get("reads", user_defaults["reads"])
         user_defaults["writes"] = params.get("writes", user_defaults["writes"])
-        user_defaults["storage_gb"] = params.get("storage", user_defaults["storage"])
+        user_defaults["storage"] = params.get("storage", user_defaults["storage"])
 
+    reads = user_defaults["reads"]
+    writes = user_defaults["writes"]
+    storage = user_defaults["storage"]
+
+    print(f" Reads: {reads}")
+    print(f" Writes: {writes}")
+    print(f" Storage: {storage}")
     prices = {
         "read_prov": get_dynamodb_price_provisioned(region, "ReadCapacityUnit-Hrs"),
         "write_prov": get_dynamodb_price_provisioned(region, "WriteCapacityUnit-Hrs"),
@@ -203,53 +283,10 @@ def dynamodb_main(terraform_data=None, params=None):
         print("❌ Unable to retrieve all required prices.")
         return
 
-    total_cost = 0
-    total_prov_read = 0
-    total_prov_write = 0
-    total_storage = 0
 
-    print(f"🗄️ Tables Found: {len(tables)}\n")
-
-    for table in tables:
-        name = table["name"]
-        result = calculate_table_cost(table, prices, user_defaults)
-
-        if result is None:
-            print(f"🔹 Table: {name} | ⚠️ Unknown billing mode. Skipping...\n")
-            continue
-
-        print(f"🔹 Table: {name} | Mode: {result['mode']}")
-        if result['mode'] == "PROVISIONED":
-            total_prov_read += result["read"]
-            total_prov_write += result["write"]
-        print(f"   📖 Reads: {result['read']} | ✍️ Writes: {result['write']} | 💾 Storage: {result['storage']} GB")
-
-        subtotal = result["cost_read"] + result["cost_write"] + result["cost_storage"]
-        total_cost += subtotal
-        total_storage += result["storage"]
-
-        print(f"   💵 Cost: Read ${result['cost_read']}, Write ${result['cost_write']}, "
-              f"Storage ${result['cost_storage']}, Total ${subtotal}\n")
-
-    # Apply free tier to provisioned usage
-    tier = apply_free_tier(total_prov_read, total_prov_write, total_storage, prices)
-    adjusted_cost = round(total_cost - tier["discount"], 3)
-
-    print("📊 Totals After Free Tier (provisioned tables only):")
-    print(f" - Read Units (billable): {tier['billable_read']}")
-    print(f" - Write Units (billable): {tier['billable_write']}")
-    print(f" - Storage GB (billable): {tier['billable_storage']}")
-    print(f" - Free Tier Discount: ${tier['discount']}")
-    print(f"💰 Estimated Monthly Cost (All Tables): ${adjusted_cost}")
-    print("\n🔗 https://aws.amazon.com/dynamodb/pricing/")
-
-    rec = recommend_billing_mode(
-        reads=user_defaults["reads"],
-        writes=user_defaults["writes"],
-        prices=prices
+    results, total_prov_read, total_prov_write, total_storage, total_cost = calculate_dynamodb_table_costs(
+        tables, prices, user_defaults
     )
 
-    print("\n🧠 Recommendation Based on Usage:")
-    print(f" - Cost if Provisioned: ${rec['estimated_cost_provisioned']}")
-    print(f" - Cost if Pay-Per-Request: ${rec['estimated_cost_on_demand']}")
-    print(f" 👉 Recommended Billing Mode: {rec['recommendation']}")
+    print_dynamodb_table_costs(results)
+    summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults)

@@ -32,7 +32,7 @@ def get_glue_price(region, worker_type="Standard"):
     usage_type = f"{region_code}-ETL-DPU-Hour"
 
     if not usage_type:
-        print(f"⚠️ Unsupported worker type: {worker_type}")
+        print(f"️ Unsupported worker type: {worker_type}")
         return None
 
     response = client.get_products(
@@ -48,7 +48,7 @@ def get_glue_price(region, worker_type="Standard"):
             for dim in term.get("priceDimensions", {}).values():
                 return float(dim["pricePerUnit"]["USD"])
 
-    print(f"⚠️ Could not find price for Glue {worker_type}")
+    print(f"️ Could not find price for Glue {worker_type}")
     return None
 
 
@@ -107,7 +107,50 @@ def suggest_glue_alternatives(job, region, monthly_hours):
                 "monthly_cost": cost
             })
     return suggestions
+def print_glue_job_costs(jobs, hours, region):
+    total_glue_cost = 0.0
 
+    for job in jobs:
+        print(f"\n  Glue Job: {job['name']}")
+        print(f"    Worker Type: {job['worker_type']}")
+        print(f"    Number of Workers: {job['num_workers']}")
+        print(f"    Usage: {hours} hours/month")
+
+        specs = GLUE_WORKER_SPECS.get(job["worker_type"], {})
+        print(f"    CPU: {specs.get('vCPU')} vCPU")
+        print(f"    Memory: {specs.get('Memory')}")
+        print(f"    Disk: {specs.get('Disk')}")
+
+        cost = calculate_glue_cost(
+            job["worker_type"],
+            job["num_workers"],
+            hours,
+            region
+        )
+
+        if cost is not None:
+            print(f"    Cost: ${cost}")
+            total_glue_cost += cost
+
+        suggestions = suggest_glue_alternatives(job, region, hours)
+        if suggestions:
+            print("    Alternatives:")
+            print(f"    {'Worker Type':<12} | {'vCPU':<4} | {'Memory':<10} | {'Disk':<8} | {'Monthly Cost'}")
+            print("    " + "-" * 60)
+            for alt in suggestions:
+                alt_specs = GLUE_WORKER_SPECS.get(alt["worker_type"], {})
+                print(f"    {alt['worker_type']:<12} | "
+                      f"{alt_specs.get('vCPU', '?'):>4} | "
+                      f"{alt_specs.get('Memory', '?'):>10} | "
+                      f"{alt_specs.get('Disk', '?'):>8} | "
+                      f"${alt['monthly_cost']}")
+    return total_glue_cost
+
+
+def print_glue_total_cost(total_glue_cost):
+    print(f"\n Total Estimated Monthly Cost: ${round(total_glue_cost, 3)}")
+    print("\n🔗 More info: https://aws.amazon.com/glue/pricing/")
+    print("=====================================================")
 
 def glue_main(terraform_data, params=None):
     """ Run AWS Glue job cost estimates and recommendations """
@@ -117,6 +160,7 @@ def glue_main(terraform_data, params=None):
     if not jobs:
         print("❌ No Glue jobs found in Terraform plan.")
         return
+    print(f"\n Found {len(jobs)} Glue Jobs:")
 
     user_defaults = {
         "hours": 10,  # total monthly usage in hours
@@ -124,38 +168,7 @@ def glue_main(terraform_data, params=None):
 
     if isinstance(params, dict):
         user_defaults["hours"] = params.get("hours", user_defaults["hours"])
-
     hours = user_defaults["hours"]
-
-    print(f"\n🧪 Detected {len(jobs)} Glue Jobs:")
-    for job in jobs:
-        print(f"\n🔹 Job: {job['name']}")
-        print(f" - Worker Type: {job['worker_type']}")
-        print(f" - Workers: {job['num_workers']}")
-        print(f" - Usage: {hours} hours/month")
-
-        specs = GLUE_WORKER_SPECS.get(job["worker_type"], {})
-        print(f" - CPU: {specs.get('vCPU')} vCPU")
-        print(f" - Memory: {specs.get('Memory')}")
-        print(f" - Disk: {specs.get('Disk')}")
-
-        cost = calculate_glue_cost(
-            job["worker_type"],
-            job["num_workers"],
-            hours,
-            region
-        )
-        print(f"💰 Estimated Monthly Cost: ${cost}")
-
-        suggestions = suggest_glue_alternatives(job, region, hours)
-        if suggestions:
-            print("🧠 Alternatives:")
-            print(f"{'Worker Type':<10} | {'vCPU':<4} | {'Memory':<8} | {'Disk':<8} | {'Monthly Cost'}")
-            print("-" * 60)
-            for alt in suggestions:
-                alt_specs = GLUE_WORKER_SPECS.get(alt["worker_type"], {})
-                print(f"{alt['worker_type']:<10} | "
-                      f"{alt_specs.get('vCPU', '?'):>4} | "
-                      f"{alt_specs.get('Memory', '?'):>8} | "
-                      f"{alt_specs.get('Disk', '?'):>8} | "
-                      f"${alt['monthly_cost']}")
+    print(f" Hours: {hours}")
+    total_glue_cost = print_glue_job_costs(jobs, hours, region)
+    print_glue_total_cost(total_glue_cost)

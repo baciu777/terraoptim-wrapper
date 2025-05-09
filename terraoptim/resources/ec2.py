@@ -2,7 +2,7 @@
 
 import json
 import boto3
-
+from datetime import datetime, timedelta
 from ..common.utils import extract_region_from_terraform_plan, REGION_NAME_MAP
 
 
@@ -34,7 +34,6 @@ def fetch_ec2_instance_types(region):
         if not next_token:
             break
 
-    print(f"✅ Total instance types fetched: {len(instance_data)}")
     return instance_data
 
 
@@ -54,7 +53,7 @@ def extract_ec2_instances(terraform_data):
 def suggest_alternatives(instance_type, hours_per_month, region):
     """ Suggest 2 cheaper and 2 more powerful EC2 instances from the same family """
     if instance_type not in INSTANCE_CATEGORIES:
-        print("ℹ️ No recommendations available for this instance type.")
+        print("️ No recommendations available for this instance type.")
         return
 
 
@@ -84,13 +83,13 @@ def suggest_alternatives(instance_type, hours_per_month, region):
 
     suggestions = cheaper + stronger
     if suggestions:
-        print("\n🧠 Suggested Alternatives:")
-        print(f"{'Instance':<15} {'vCPU':<5} {'Memory':<10} {'Hourly ($)':<12} {'Monthly ($)':<12}")
-        print("-" * 60)
+        print("\n   Suggested Alternatives:")
+        print(f"   {'Instance':<15} {'vCPU':<5} {'Memory':<10} {'Hourly ($)':<12} {'Monthly ($)':<12}")
+        print("   "+"-" * 57)
         for inst in suggestions:
-            print(f"{inst['name']:<15} {inst['vCPU']:<5} {inst['memory']:<10} {inst['hourly']:<12} {inst['monthly']:<12}")
+            print(f"   {inst['name']:<15} {inst['vCPU']:<5} {inst['memory']:<10} {inst['hourly']:<12} {inst['monthly']:<12}")
     else:
-        print("⚠️ No valid pricing data found for suggested alternatives.")
+        print("️ No valid pricing data found for suggested alternatives.")
 
 def get_ec2_on_demand_price(instance_type, region):
     """ Fetch EC2 price using AWS Pricing API """
@@ -117,7 +116,7 @@ def get_ec2_on_demand_price(instance_type, region):
     return None
 
 
-from datetime import datetime, timedelta
+
 
 
 def get_spot_price(instance_type, region):
@@ -145,33 +144,46 @@ def get_spot_price(instance_type, region):
         return None
 
 
-def calculate_costs(instances, hours_per_month, region):
+def calculate_ec2_costs(instances, hours_per_month, region):
     """ Calculate costs and suggest alternatives """
+    total_on_demand = 0.0
+    total_spot = 0.0
     for instance, is_spot in instances:
         on_demand_price = get_ec2_on_demand_price(instance, region)
         spot_price = get_spot_price(instance, region)
         on_demand_price = round(on_demand_price, 3) if on_demand_price else "N/A"
         spot_price = round(spot_price, 3) if spot_price else "N/A"
 
-        print(f"\n🔹 Instance: {instance} ({INSTANCE_CATEGORIES.get(instance, {}).get('category', 'Unknown')})")
-        print(f"💾 {INSTANCE_CATEGORIES.get(instance, {}).get('memory', 'N/A')} RAM, CPU: {INSTANCE_CATEGORIES.get(instance, {}).get('vCPU', 'N/A')}")
-        print(f"💰 On-Demand Price: {on_demand_price} USD/hour")
-        print(f"💰 Spot Price: {spot_price} USD/hour")
+        print(f"\n  Instance: {instance} ({INSTANCE_CATEGORIES.get(instance, {}).get('category', 'Unknown')})")
+        print(f"    RAM {INSTANCE_CATEGORIES.get(instance, {}).get('memory', 'N/A')} RAM, CPU: {INSTANCE_CATEGORIES.get(instance, {}).get('vCPU', 'N/A')}")
+        print(f"    On-Demand Price: {on_demand_price} USD/hour")
+        print(f"    Spot Price:      {spot_price} USD/hour")
 
         if is_spot:
-            print("⚠️ Using Spot Instances – consider switching to On-Demand if stability is needed.")
+            print("️  Using Spot Instances – consider switching to On-Demand if stability is needed.")
 
         cost_monthly_on_demand = round(on_demand_price * hours_per_month, 3) if on_demand_price else "N/A"
         cost_monthly_spot = round(spot_price * hours_per_month, 3) if spot_price else "N/A"
-        print(f"📊 Monthly Estimation Cost: {cost_monthly_on_demand} USD (On-Demand)")
-        print(f"📊 Monthly Estimation Cost: {cost_monthly_spot} USD (Spot)")
 
-        print("🔗 More Details:")
-        print(" - Spot Instances: https://aws.amazon.com/ec2/spot/")
+        print(f"    Monthly Estimation (On-Demand): ${cost_monthly_on_demand}")
+        print(f"    Monthly Estimation (Spot):      ${cost_monthly_spot}")
 
-
+        if isinstance(cost_monthly_on_demand, float):
+            total_on_demand += cost_monthly_on_demand
+        if isinstance(cost_monthly_spot, float):
+            total_spot += cost_monthly_spot
 
         suggest_alternatives(instance, hours_per_month or 720, region)
+    return total_on_demand, total_spot
+
+
+
+def summarize_ec2_totals(total_on_demand, total_spot):
+    """Print total estimated monthly cost summary"""
+    print(f" Total Estimated Monthly Cost For All Instances (On-Demand): ${round(total_on_demand, 3)}")
+    print(f" Total Estimated Monthly Cost For All Instances (Spot):      ${round(total_spot, 3)}")
+    print("\n🔗 More info: https://aws.amazon.com/ec2/pricing/")
+    print("====================================================")
 
 def ec2_main(terraform_data, params=None):
     """ Main function to run EC2 cost optimization logic """
@@ -182,6 +194,7 @@ def ec2_main(terraform_data, params=None):
     if not instances:
         print("❌ No EC2 instances found in Terraform plan.")
         return
+    print(f"\n Found {len(instances)} EC2 instances:")
 
     user_defaults = {
         "hours": 720
@@ -190,10 +203,11 @@ def ec2_main(terraform_data, params=None):
     if isinstance(params, dict):
         user_defaults["hours"] = params.get("hours", user_defaults["hours"])
 
-
+    hours = user_defaults["hours"]
+    print(f" Hours: {hours}")
 
     global INSTANCE_CATEGORIES
     INSTANCE_CATEGORIES = fetch_ec2_instance_types(region)
 
-    calculate_costs(instances, user_defaults["hours"], region)
-
+    total_on_demand, total_spot = calculate_ec2_costs(instances, hours, region)
+    summarize_ec2_totals(total_on_demand, total_spot)

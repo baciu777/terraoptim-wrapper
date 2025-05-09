@@ -63,6 +63,7 @@ def get_lambda_price(region, architecture="x86_64"):
 
     return gb_sec_price, request_price
 
+
 def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
     """Estimate Lambda function monthly cost without applying free tier."""
     mem_gb = lambda_func["memory"] / 1024
@@ -86,52 +87,45 @@ def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
         "raw_gb_sec": total_gb_seconds,
         "raw_requests": monthly_requests
     }
-def lambda_main(terraform_data, params=None):
-    """Main entry for Lambda analysis (requires usage_data: invocations + duration)."""
 
-    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    functions = extract_lambda_functions(terraform_data) if terraform_data else []
 
-    if not functions:
-        print("❌ No Lambda functions found in Terraform plan.")
-        return
-
-    # Default usage assumptions
-    user_defaults = {
-        "invocations": 1_000_000,
-        "duration": None  # will default to function timeout per-function
-    }
-
-    if isinstance(params, dict):
-        user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
-        user_defaults["duration"] = params.get("duration", user_defaults["duration"])
-
-    print(f"\n🔍 Found {len(functions)} Lambda function(s):")
+def calculate_lambda_costs(functions, user_defaults, region):
+    """Calculate per-function Lambda costs and total usage."""
     total_gb_seconds = 0
     total_invocations = 0
+    cost_results = []
 
     for func in functions:
         invocations = user_defaults["invocations"]
         duration = user_defaults["duration"] if user_defaults["duration"] is not None else func["timeout"]
 
         cost = estimate_lambda_cost(func, invocations, duration, region)
-
         total_gb_seconds += cost["raw_gb_sec"]
         total_invocations += cost["raw_requests"]
+        cost_results.append(cost)
 
-        print(f"\n⚙️ Function: {cost['function_name']} ({cost['architecture']})")
-        print(f"💾 Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
-        print(f"📈 Invocations: {cost['requests']} / month")
-        print(f"💸 Compute Cost (before free tier): ${cost['compute_cost']}")
-        print(f"💸 Request Cost (before free tier): ${cost['request_cost']}")
-        print(f"📊 Total (before free tier): ${cost['total_cost']}")
+    return cost_results, total_gb_seconds, total_invocations
 
-        if func["architecture"] == "x86_64":
-            print("💡 Tip: Consider switching to `arm64` (Graviton2) for ~20% lower cost.")
 
-    print("\n🧾 AWS Free Tier Limits:")
-    print(f" - {FREE_TIER_REQUESTS:,} requests / month")
-    print(f" - {FREE_TIER_GB_SEC:,} GB-seconds / month")
+def print_lambda_function_costs(cost_results):
+    """Print detailed cost breakdown per Lambda function."""
+    for cost in cost_results:
+        print(f"\n️ Function: {cost['function_name']} ({cost['architecture']})")
+        print(f"    Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
+        print(f"    Invocations: {cost['requests']} / month")
+        print(f"    Compute Cost (before free tier): ${cost['compute_cost']}")
+        print(f"    Request Cost (before free tier): ${cost['request_cost']}")
+        print(f"    Total (before free tier): ${cost['total_cost']}")
+
+        if cost["architecture"] == "x86_64":
+            print("    Tip: Consider switching to `arm64` (Graviton2) for ~20% lower cost.")
+
+
+def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
+    """Apply AWS Free Tier and print total monthly costs."""
+    print("\n AWS Free Tier Limits:")
+    print(f"   {FREE_TIER_REQUESTS:,} requests / month")
+    print(f"   {FREE_TIER_GB_SEC:,} GB-seconds / month")
 
     billable_requests = max(total_invocations - FREE_TIER_REQUESTS, 0)
     billable_gb_sec = max(total_gb_seconds - FREE_TIER_GB_SEC, 0)
@@ -141,11 +135,42 @@ def lambda_main(terraform_data, params=None):
     final_compute_cost = round(billable_gb_sec * gb_sec_price, 3)
     final_total_cost = round(final_request_cost + final_compute_cost, 3)
 
-    print(f"\n📉 Total Usage This Month:")
-    print(f" - GB-seconds used: {round(total_gb_seconds):,} (Billable: {round(billable_gb_sec):,})")
-    print(f" - Invocations: {total_invocations:,} (Billable: {billable_requests:,})")
+    print(f"\n Total Usage This Month:")
+    print(f"   GB-seconds used: {round(total_gb_seconds):,} (Billable: {round(billable_gb_sec):,})")
+    print(f"   Requests: {total_invocations:,} (Billable: {billable_requests:,})")
 
-    print(f"\n💰 Final Monthly Cost After Free Tier:")
-    print(f" - Compute Cost: ${final_compute_cost}")
-    print(f" - Request Cost: ${final_request_cost}")
-    print(f" - Total Estimated Monthly Cost: ${final_total_cost}")
+    print(f"\n Final Monthly Cost After Free Tier:")
+    print(f"  Compute Cost: ${final_compute_cost}")
+    print(f"  Request Cost: ${final_request_cost}")
+    print(f"  Total Estimated Monthly Cost For All Lambdas: ${final_total_cost}")
+    print("\n🔗 More info: https://aws.amazon.com/lambda/pricing/")
+    print("====================================================")
+
+
+def lambda_main(terraform_data, params=None):
+    """Main entry for Lambda analysis (requires usage_data: invocations + duration)."""
+
+    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
+    functions = extract_lambda_functions(terraform_data) if terraform_data else []
+
+    if not functions:
+        print("❌ No Lambda functions found in Terraform plan.")
+        return
+    print(f"\n Found {len(functions)} Lambda functions:")
+
+    user_defaults = {
+        "invocations": 1_000_000,
+        "duration": None
+    }
+
+    if isinstance(params, dict):
+        user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
+        user_defaults["duration"] = params.get("duration", user_defaults["duration"])
+
+    invocations = user_defaults["invocations"]
+    print(f" Invocations: {invocations}")
+
+
+    cost_results, total_gb_seconds, total_invocations = calculate_lambda_costs(functions, user_defaults, region)
+    print_lambda_function_costs(cost_results)
+    summarize_lambda_totals(total_gb_seconds, total_invocations, region)
