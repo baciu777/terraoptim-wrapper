@@ -54,7 +54,15 @@ REGION_CODE_MAP = {
 
 
 def extract_region_from_terraform_plan(terraform_data):
-    """ Extract region from Terraform plan """
+    """
+    Extracts the AWS region from a Terraform plan's provider configuration.
+
+    Args:
+        terraform_data (dict): The parsed JSON data from a Terraform plan.
+
+    Returns:
+        str or None: The AWS region if found, otherwise None.
+    """
     providers = terraform_data.get("configuration", {}).get("provider_config", {})
     aws_provider = providers.get("aws", {})
     region_expr = aws_provider.get("expressions", {}).get("region", {})

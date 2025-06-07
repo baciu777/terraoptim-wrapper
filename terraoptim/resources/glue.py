@@ -23,37 +23,55 @@ GLUE_WORKER_SPECS = {
 }
 
 def get_glue_price(region, worker_type="Standard"):
-    """Fetch hourly DPU price for AWS Glue based on worker type"""
-    client = boto3.client("pricing", region_name="us-east-1")
+    """
+    Fetch AWS Glue price per DPU hour for a given region and worker type.
 
-    location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
+    Args:
+        region (str): AWS region code (e.g., 'us-east-1').
+        worker_type (str): Glue worker type (default: "Standard").
 
-    region_code = REGION_CODE_MAP.get(region, "USE1")
-    usage_type = f"{region_code}-ETL-DPU-Hour"
+    Returns:
+        float or None: Price per DPU hour in USD, or None if fetch fails.
+    """
+    try:
+        client = boto3.client("pricing", region_name="us-east-1")
 
-    if not usage_type:
-        print(f"️ Unsupported worker type: {worker_type}")
-        return None
+        location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
 
-    response = client.get_products(
-        ServiceCode="AWSGlue",
-        Filters=[
-            {"Type": "TERM_MATCH", "Field": "location", "Value": location},
-           {"Type": "TERM_MATCH", "Field": "usageType", "Value": usage_type},
-        ]
-    )
-    for price_item in response["PriceList"]:
-        price_data = json.loads(price_item)
-        for term in price_data.get("terms", {}).get("OnDemand", {}).values():
-            for dim in term.get("priceDimensions", {}).values():
-                return float(dim["pricePerUnit"]["USD"])
+        region_code = REGION_CODE_MAP.get(region, "USE1")
+        usage_type = f"{region_code}-ETL-DPU-Hour"
 
-    print(f"️ Could not find price for Glue {worker_type}")
+        if not usage_type:
+            print(f"️ Unsupported worker type: {worker_type}")
+            return None
+
+        response = client.get_products(
+            ServiceCode="AWSGlue",
+            Filters=[
+                {"Type": "TERM_MATCH", "Field": "location", "Value": location},
+               {"Type": "TERM_MATCH", "Field": "usageType", "Value": usage_type},
+            ]
+        )
+        for price_item in response["PriceList"]:
+            price_data = json.loads(price_item)
+            for term in price_data.get("terms", {}).get("OnDemand", {}).values():
+                for dim in term.get("priceDimensions", {}).values():
+                    return float(dim["pricePerUnit"]["USD"])
+    except Exception as e:
+        print(f"️  Failed to fetch glue price for {worker_type}: {e}")
     return None
 
 
 def extract_glue_jobs(terraform_data):
-    """ Extract AWS Glue job configs from Terraform """
+    """
+    Extract AWS Glue job configurations from Terraform plan data.
+
+    Args:
+        terraform_data (dict): Terraform plan data.
+
+    Returns:
+        list of dict: List of Glue jobs with 'name', 'worker_type', and 'num_workers'.
+    """
     jobs = []
     for resource in terraform_data.get("resource_changes", []):
         if resource["type"] == "aws_glue_job":
@@ -70,7 +88,18 @@ def extract_glue_jobs(terraform_data):
 
 
 def calculate_glue_cost(worker_type, num_workers, monthly_hours, region):
-    """Calculate Glue job monthly cost based on total usage hours"""
+    """
+    Calculate the estimated monthly cost of an AWS Glue job.
+
+    Args:
+        worker_type (str): Glue worker type.
+        num_workers (int): Number of workers.
+        monthly_hours (int or float): Monthly usage hours.
+        region (str): AWS region code.
+
+    Returns:
+        float or None: Estimated monthly cost in USD, or None if price not found.
+    """
     price_per_dpu_hr = get_glue_price(region, worker_type)
     if not price_per_dpu_hr:
         return None
@@ -82,7 +111,17 @@ def calculate_glue_cost(worker_type, num_workers, monthly_hours, region):
 
 
 def suggest_glue_alternatives(job, region, monthly_hours):
-    """ Suggest one smaller and one larger worker config (if valid) """
+    """
+    Suggest one smaller and one larger worker type alternative for a Glue job.
+
+    Args:
+        job (dict): Glue job dict with 'worker_type' and 'num_workers'.
+        region (str): AWS region code.
+        monthly_hours (int or float): Monthly usage hours.
+
+    Returns:
+        list of dict: Suggested alternatives with 'worker_type' and 'monthly_cost'.
+    """
     types = ["G.025X", "Standard", "G.1X", "G.2X", "G.4X", "G.8X", "Z.2X"]
 
     current_idx = types.index(job["worker_type"])
@@ -108,6 +147,18 @@ def suggest_glue_alternatives(job, region, monthly_hours):
             })
     return suggestions
 def print_glue_job_costs(jobs, hours, region):
+    """
+    Print detailed cost and specification info for each Glue job.
+
+    Args:
+        jobs (list): List of Glue jobs.
+        hours (int or float): Monthly usage hours.
+        region (str): AWS region code.
+
+    Returns:
+        float: Total estimated monthly cost for all jobs.
+    """
+
     total_glue_cost = 0.0
 
     for job in jobs:

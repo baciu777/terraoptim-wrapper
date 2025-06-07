@@ -6,11 +6,20 @@ import boto3
 from ..common.utils import extract_region_from_terraform_plan, REGION_NAME_MAP
 
 FREE_TIER_REQUESTS = 1000000
-FREE_TIER_GB_SEC = 400000  # 400,000 GB-s
+FREE_TIER_GB_SEC = 400000
 
 
 def extract_lambda_functions(terraform_data):
-    """Extract AWS Lambda functions from Terraform plan."""
+    """
+    Extract AWS Lambda functions from Terraform plan.
+
+    Args:
+        terraform_data (dict): Parsed Terraform plan data.
+
+    Returns:
+        list of dict: List of Lambda function info dictionaries, each containing
+                      'name', 'memory', 'timeout', and 'architecture'.
+    """
     functions = []
     for resource in terraform_data.get("resource_changes", []):
         if resource["type"] == "aws_lambda_function":
@@ -28,44 +37,67 @@ def extract_lambda_functions(terraform_data):
 
 
 def get_lambda_price(region, architecture="x86_64"):
-    """Fetch Lambda pricing per GB-second and per request."""
-    client = boto3.client("pricing", region_name="us-east-1")
+    """
+    Fetch Lambda pricing per GB-second and per request from AWS Pricing API.
 
-    location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
-    filters = [
-        {"Type": "TERM_MATCH", "Field": "location", "Value": location},
-        {"Type": "TERM_MATCH", "Field": "productFamily", "Value": "Lambda"},
-        {"Type": "TERM_MATCH", "Field": "operation", "Value": "Invoke"},
-    ]
+    Args:
+        region (str): AWS region code (e.g., 'us-east-1').
+        architecture (str): Processor architecture, default is 'x86_64'.
 
-    if architecture == "arm64":
-        filters.append({"Type": "TERM_MATCH", "Field": "processorArchitecture", "Value": "AWS Graviton"})
+    Returns:
+        tuple: (gb_sec_price (float), request_price (float)) - prices in USD.
+    """
+    try:
+        client = boto3.client("pricing", region_name="us-east-1")
 
-    response = client.get_products(
-        ServiceCode="AWSLambda",
-        Filters=filters,
-        MaxResults=100,
-    )
+        location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
+        filters = [
+            {"Type": "TERM_MATCH", "Field": "location", "Value": location},
+            {"Type": "TERM_MATCH", "Field": "productFamily", "Value": "Lambda"},
+            {"Type": "TERM_MATCH", "Field": "operation", "Value": "Invoke"},
+        ]
 
-    gb_sec_price = 0.0000166667  # fallback default
-    request_price = 0.20 / 1000000  # $0.20 per 1M requests
+        if architecture == "arm64":
+            filters.append({"Type": "TERM_MATCH", "Field": "processorArchitecture", "Value": "AWS Graviton"})
 
-    for product_json in response["PriceList"]:
-        product = json.loads(product_json)
-        terms = product["terms"]["OnDemand"]
-        for term in terms.values():
-            for dim in term["priceDimensions"].values():
-                desc = dim["description"].lower()
-                if "duration" in desc:
-                    gb_sec_price = float(dim["pricePerUnit"]["USD"])
-                elif "requests" in desc:
-                    request_price = float(dim["pricePerUnit"]["USD"])
+        response = client.get_products(
+            ServiceCode="AWSLambda",
+            Filters=filters,
+            MaxResults=100,
+        )
 
-    return gb_sec_price, request_price
+        gb_sec_price = None
+        request_price = None
+
+        for product_json in response["PriceList"]:
+            product = json.loads(product_json)
+            terms = product["terms"]["OnDemand"]
+            for term in terms.values():
+                for dim in term["priceDimensions"].values():
+                    desc = dim["description"].lower()
+                    if "duration" in desc:
+                        gb_sec_price = float(dim["pricePerUnit"]["USD"])
+                    elif "requests" in desc:
+                        request_price = float(dim["pricePerUnit"]["USD"])
+        return gb_sec_price, request_price
+    except Exception as e:
+        print(f"️  Failed to fetch lambda price: {e}")
+    return None, None
 
 
 def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
-    """Estimate Lambda function monthly cost without applying free tier."""
+    """
+    Estimate Lambda function monthly cost without applying free tier.
+
+    Args:
+        lambda_func (dict): Lambda function metadata.
+        monthly_requests (int): Number of invocations per month.
+        avg_duration (float): Average execution duration in seconds.
+        region (str): AWS region code.
+
+    Returns:
+        dict: Cost breakdown including compute, request, and total costs.
+    """
     mem_gb = lambda_func["memory"] / 1024
     total_gb_seconds = monthly_requests * mem_gb * avg_duration
 
@@ -90,7 +122,17 @@ def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
 
 
 def calculate_lambda_costs(functions, user_defaults, region):
-    """Calculate per-function Lambda costs and total usage."""
+    """
+    Calculate per-function Lambda costs and aggregate total usage.
+
+    Args:
+        functions (list): List of Lambda function dicts.
+        user_defaults (dict): Contains 'invocations' and optional 'duration'.
+        region (str): AWS region code.
+
+    Returns:
+        tuple: (cost_results (list), total_gb_seconds (float), total_invocations (int))
+    """
     total_gb_seconds = 0
     total_invocations = 0
     cost_results = []
@@ -122,7 +164,15 @@ def print_lambda_function_costs(cost_results):
 
 
 def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
-    """Apply AWS Free Tier and print total monthly costs."""
+    """
+    Apply AWS Free Tier and print total monthly Lambda costs.
+
+    Args:
+        total_gb_seconds (float): Total GB-seconds used by all Lambdas.
+        total_invocations (int): Total number of Lambda invocations.
+        region (str): AWS region code.
+
+    """
     print("\n AWS Free Tier Limits:")
     print(f"   {FREE_TIER_REQUESTS:,} requests / month")
     print(f"   {FREE_TIER_GB_SEC:,} GB-seconds / month")
@@ -148,7 +198,6 @@ def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
 
 
 def lambda_main(terraform_data, params=None):
-    """Main entry for Lambda analysis (requires usage_data: invocations + duration)."""
 
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     functions = extract_lambda_functions(terraform_data) if terraform_data else []
@@ -167,7 +216,7 @@ def lambda_main(terraform_data, params=None):
     if isinstance(params, dict):
         unknown_keys = set(params.keys()) - allowed_keys
         if unknown_keys:
-            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
         user_defaults["duration"] = params.get("duration", user_defaults["duration"])
 

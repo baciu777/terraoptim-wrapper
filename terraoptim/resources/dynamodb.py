@@ -1,19 +1,43 @@
 #!/usr/bin/env python3
 import math
-
 import boto3
 import json
-
 from terraoptim.common.utils import REGION_NAME_MAP, extract_region_from_terraform_plan, REGION_CODE_MAP
 
-# AWS Free Tier for DynamoDB
-FREE_TIER_READ_CAPACITY = 25  # units
-FREE_TIER_WRITE_CAPACITY = 25  # units
-FREE_TIER_STORAGE_GB = 25  # GB
-HOURS_PER_MONTH = 730
+
+FREE_TIER_READ_CAPACITY = 25
+FREE_TIER_WRITE_CAPACITY = 25
+FREE_TIER_STORAGE_GB = 25
+HOURS_PER_MONTH = 720
 
 
 def get_dynamodb_price_provisioned(region, usage_type):
+    """
+    Retrieves the DynamoDB provisioned pricing for a specific usage type and region.
+    Filters to only include pricing that applies beyond the free tier.
+    """
+    return get_dynamodb_price(region, usage_type, filter_description=True)
+
+def get_dynamodb_price_on_demand(region, usage_type):
+    """
+    Retrieves the DynamoDB on-demand pricing for a specific usage type and region.
+    Returns the first available price without filtering for free tier conditions.
+    """
+    return get_dynamodb_price(region, usage_type)
+
+
+def get_dynamodb_price(region, usage_type, filter_description=False):
+    """
+    Generic helper function to retrieve DynamoDB pricing for a given usage type and region.
+
+    Args:
+        region (str): AWS region code (e.g., 'us-west-2').
+        usage_type (str): Usage type string (e.g., 'ReadCapacityUnit-Hrs').
+        filter_description (bool): If True, filters price entries for post-free-tier usage.
+
+    Returns:
+        float or None: Price in USD or None if not found or on error.
+    """
     pricing = boto3.client("pricing", region_name="us-east-1")
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
     region_prefix = REGION_CODE_MAP.get(region, "")
@@ -37,45 +61,27 @@ def get_dynamodb_price_provisioned(region, usage_type):
                 for dim in price_dimensions.values():
                     description = dim.get("description", "")
                     price = dim.get("pricePerUnit", {}).get("USD")
-                    if description and 'beyond the free tier' in description or 'storage used beyond' in description:
+                    if filter_description:
+                        if description and 'beyond the free tier' in description or 'storage used beyond' in description:
+                            return float(price)
+                    else:
                         return float(price)
-
     except Exception as e:
         print(f"️ Error fetching price for {usage_type}: {e}")
     return None
 
 
-def get_dynamodb_price_on_demand(region, usage_type):
-    pricing = boto3.client("pricing", region_name="us-east-1")
-    location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
-    region_prefix = REGION_CODE_MAP.get(region, "")
-    if region_prefix and region != "us-east-1":  # for us-east-1 there is no prefix
-        usage_type = f"{region_prefix}-{usage_type}"
-    try:
-        response = pricing.get_products(
-            ServiceCode="AmazonDynamoDB",
-            Filters=[
-                {"Type": "TERM_MATCH", "Field": "location", "Value": location},
-                {"Type": "TERM_MATCH", "Field": "usagetype", "Value": usage_type}
-
-            ]
-        )
-        for product_json in response["PriceList"]:
-            product = json.loads(product_json)
-            terms = product.get("terms", {}).get("OnDemand", {})
-            for term in terms.values():
-                price_dimensions = term.get("priceDimensions", {})
-                for dim in price_dimensions.values():
-                    price = dim.get("pricePerUnit", {}).get("USD")
-                    return float(price)
-
-    except Exception as e:
-        print(f"️ Error: {e}")
-
-    return None
-
 
 def extract_dynamodb_tables(terraform_data):
+    """
+    Extracts DynamoDB table configuration from Terraform plan data.
+
+    Args:
+        terraform_data (dict): Parsed Terraform plan JSON.
+
+    Returns:
+        list: A list of dictionaries containing billing mode, read, and write capacity for each table.
+    """
     tables = []
     for resource in terraform_data.get("resource_changes", []):
         if resource["type"] == "aws_dynamodb_table":
@@ -92,45 +98,53 @@ def extract_dynamodb_tables(terraform_data):
 
 
 def calculate_table_cost(table, prices, user_defaults):
+    """
+    Calculates the monthly cost of a DynamoDB table based on pricing and usage.
+
+    Args:
+        table (dict): DynamoDB table details (billing mode, read/write capacity).
+        prices (dict): Dictionary with pricing info for provisioned and on-demand modes.
+        user_defaults (dict): Default read/write/storage values for PAY_PER_REQUEST mode.
+
+    Returns:
+        dict: Cost breakdown including mode, read/write/storage values, and their respective costs.
+    """
     billing = table.get("billing_mode", "PROVISIONED").upper()
     storage = user_defaults["storage"]
     storage_cost = round(storage * prices["storage"], 3)
 
-    if billing == "PROVISIONED":
-        read = table.get("read_capacity")
-        write = table.get("write_capacity")
-        cost_read = round(read * HOURS_PER_MONTH * prices["read_prov"], 3)
-        cost_write = round(write * HOURS_PER_MONTH * prices["write_prov"], 3)
-        return {
-            "mode": billing,
-            "read": read,
-            "write": write,
-            "storage": storage,
-            "cost_read": cost_read,
-            "cost_write": cost_write,
-            "cost_storage": storage_cost
-        }
+    read = table.get("read_capacity") if billing == "PROVISIONED" else user_defaults["reads"]
+    write = table.get("write_capacity") if billing == "PROVISIONED" else user_defaults["writes"]
 
-    elif billing == "PAY_PER_REQUEST":
-        read = user_defaults["reads"]
-        write = user_defaults["writes"]
+    cost_read = round(read * (HOURS_PER_MONTH if billing == "PROVISIONED" else 1) * prices[
+        "read_prov" if billing == "PROVISIONED" else "read_ondemand"], 3)
+    cost_write = round(write * (HOURS_PER_MONTH if billing == "PROVISIONED" else 1) * prices[
+        "write_prov" if billing == "PROVISIONED" else "write_ondemand"], 3)
 
-        cost_read = round(read * prices["read_ondemand"], 3)
-        cost_write = round(write * prices["write_ondemand"], 3)
-        return {
-            "mode": billing,
-            "read": read,
-            "write": write,
-            "storage": storage,
-            "cost_read": cost_read,
-            "cost_write": cost_write,
-            "cost_storage": storage_cost
-        }
-
-    return None
+    return {
+        "mode": billing,
+        "read": read,
+        "write": write,
+        "storage": storage,
+        "cost_read": cost_read,
+        "cost_write": cost_write,
+        "cost_storage": storage_cost
+    }
 
 
 def apply_free_tier(total_read, total_write, total_storage, prices):
+    """
+    Applies the AWS free tier limits to DynamoDB usage and calculates the discount.
+
+    Args:
+        total_read (int): Total read capacity units used per month.
+        total_write (int): Total write capacity units used per month.
+        total_storage (float): Total storage used in GB.
+        prices (dict): Dictionary with provisioned read/write and storage prices.
+
+    Returns:
+        dict: Billable units after free tier and total discount value.
+    """
     billable_read = max(total_read - FREE_TIER_READ_CAPACITY, 0)
     billable_write = max(total_write - FREE_TIER_WRITE_CAPACITY, 0)
     billable_storage = max(total_storage - FREE_TIER_STORAGE_GB, 0)
@@ -150,6 +164,17 @@ def apply_free_tier(total_read, total_write, total_storage, prices):
 
 
 def recommend_billing_mode(reads, writes, prices):
+    """
+    Recommends the most cost-effective DynamoDB billing mode based on usage.
+
+    Args:
+        reads (int): Total number of read requests per month.
+        writes (int): Total number of write requests per month.
+        prices (dict): Dictionary with on-demand and provisioned read/write prices.
+
+    Returns:
+        dict: Estimated monthly cost for both billing modes and the recommended mode.
+    """
     seconds_per_month = 30 * 24 * 60 * 60
     provisioned_read_units = math.ceil(reads / seconds_per_month)
     provisioned_write_units = math.ceil(writes / seconds_per_month)
@@ -173,6 +198,17 @@ def recommend_billing_mode(reads, writes, prices):
 
 
 def calculate_dynamodb_table_costs(tables, prices, user_defaults):
+    """
+    Calculates the cost breakdown for each DynamoDB table based on billing mode, capacity, and storage.
+
+    Args:
+        tables (list): List of table configurations extracted from Terraform.
+        prices (dict): DynamoDB pricing details for various usage types.
+        user_defaults (dict): Default read/write/storage values for on-demand tables.
+
+    Returns:
+        tuple: List of table cost breakdowns and overall usage totals (read, write, storage, cost).
+    """
     total_cost = 0
     total_prov_read = 0
     total_prov_write = 0
@@ -212,9 +248,15 @@ def calculate_dynamodb_table_costs(tables, prices, user_defaults):
     return results, total_prov_read, total_prov_write, total_storage, total_cost
 
 def print_dynamodb_table_costs(results):
+    """
+    Prints a formatted summary of the cost details for each DynamoDB table.
+
+    Args:
+        results (list): List of dictionaries containing cost breakdowns for each table.
+    """
     for r in results:
         if r["skipped"]:
-            print(f" Table {r['index']} | ⚠️ Unknown billing mode. Skipping...\n")
+            print(f" Table {r['index']} | ️ Unknown billing mode. Skipping...\n")
             continue
 
         print(f"  Table {r['index']} | Mode: {r['mode']}")
@@ -223,6 +265,17 @@ def print_dynamodb_table_costs(results):
               f"Storage ${r['cost_storage']}, Total ${r['subtotal']}\n")
 
 def summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults):
+    """
+    Applies free tier discount, summarizes overall usage and cost, and provides billing mode recommendation.
+
+    Args:
+        total_prov_read (int): Total provisioned read capacity units.
+        total_prov_write (int): Total provisioned write capacity units.
+        total_storage (float): Total storage used in GB.
+        total_cost (float): Total unadjusted cost across all tables.
+        prices (dict): DynamoDB pricing details.
+        user_defaults (dict): Default read/write values for cost recommendations.
+    """
     tier = apply_free_tier(total_prov_read, total_prov_write, total_storage, prices)
     adjusted_cost = round(total_cost - tier["discount"], 3)
 
@@ -264,7 +317,7 @@ def dynamodb_main(terraform_data=None, params=None):
     if isinstance(params, dict):
         unknown_keys = set(params.keys()) - allowed_keys
         if unknown_keys:
-            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["reads"] = params.get("reads", user_defaults["reads"])
         user_defaults["writes"] = params.get("writes", user_defaults["writes"])
         user_defaults["storage"] = params.get("storage", user_defaults["storage"])
