@@ -92,7 +92,6 @@ def suggest_alternatives(instance_type, hours_per_month, region):
         print("️ No valid pricing data found for suggested alternatives.")
 
 def get_ec2_on_demand_price(instance_type, region):
-    """ Fetch EC2 price using AWS Pricing API """
     client = boto3.client("pricing", region_name="us-east-1")
     response = client.get_products(
         ServiceCode="AmazonEC2",
@@ -155,7 +154,7 @@ def calculate_ec2_costs(instances, hours_per_month, region):
         spot_price = round(spot_price, 3) if spot_price else "N/A"
 
         print(f"\n  Instance: {instance} ({INSTANCE_CATEGORIES.get(instance, {}).get('category', 'Unknown')})")
-        print(f"    RAM {INSTANCE_CATEGORIES.get(instance, {}).get('memory', 'N/A')} RAM, CPU: {INSTANCE_CATEGORIES.get(instance, {}).get('vCPU', 'N/A')}")
+        print(f"    RAM: {INSTANCE_CATEGORIES.get(instance, {}).get('memory', 'N/A')}, CPU: {INSTANCE_CATEGORIES.get(instance, {}).get('vCPU', 'N/A')}")
         print(f"    On-Demand Price: {on_demand_price} USD/hour")
         print(f"    Spot Price:      {spot_price} USD/hour")
 
@@ -182,7 +181,7 @@ def summarize_ec2_totals(total_on_demand, total_spot):
     """Print total estimated monthly cost summary"""
     print(f" Total Estimated Monthly Cost For All Instances (On-Demand): ${round(total_on_demand, 3)}")
     print(f" Total Estimated Monthly Cost For All Instances (Spot):      ${round(total_spot, 3)}")
-    print("\n🔗 More info: https://aws.amazon.com/ec2/pricing/")
+    print("\n More info: https://aws.amazon.com/ec2/pricing/")
     print("====================================================")
 
 def ec2_main(terraform_data, params=None):
@@ -192,15 +191,19 @@ def ec2_main(terraform_data, params=None):
     instances = extract_ec2_instances(terraform_data) if terraform_data else []
 
     if not instances:
-        print("❌ No EC2 instances found in Terraform plan.")
+        print(" No EC2 instances found in Terraform plan.")
         return
     print(f"\n Found {len(instances)} EC2 instances:")
 
     user_defaults = {
         "hours": 720
     }
-
+    allowed_keys = set(user_defaults.keys())
     if isinstance(params, dict):
+        unknown_keys = set(params.keys()) - allowed_keys
+        if unknown_keys:
+            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+
         user_defaults["hours"] = params.get("hours", user_defaults["hours"])
 
     hours = user_defaults["hours"]

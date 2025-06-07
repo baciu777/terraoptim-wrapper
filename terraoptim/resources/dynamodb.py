@@ -243,7 +243,7 @@ def summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, 
     print(f"   Cost if Provisioned: ${rec['estimated_cost_provisioned']}")
     print(f"   Cost if Pay-Per-Request: ${rec['estimated_cost_on_demand']}")
     print(f"  Recommended Billing Mode: {rec['recommendation']}")
-    print("\n🔗 More info: https://aws.amazon.com/dynamodb/pricing/")
+    print("\n More info: https://aws.amazon.com/dynamodb/pricing/")
     print("====================================================")
 
 def dynamodb_main(terraform_data=None, params=None):
@@ -260,7 +260,11 @@ def dynamodb_main(terraform_data=None, params=None):
         "writes": 500_000,
         "storage": 10
     }
+    allowed_keys = set(user_defaults.keys())
     if isinstance(params, dict):
+        unknown_keys = set(params.keys()) - allowed_keys
+        if unknown_keys:
+            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["reads"] = params.get("reads", user_defaults["reads"])
         user_defaults["writes"] = params.get("writes", user_defaults["writes"])
         user_defaults["storage"] = params.get("storage", user_defaults["storage"])

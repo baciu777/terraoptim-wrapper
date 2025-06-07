@@ -209,7 +209,7 @@ def summarize_s3_totals(user_defaults, total_storage_cost, total_put_cost, total
     print(f"   GET Requests: {billable_get} | Cost: ${cost_get}")
     print(f" Total Estimated Monthly Cost For All Buckets: ${round(total, 3)}")
 
-    print("\n🔗 More info: https://aws.amazon.com/s3/pricing/")
+    print("\n More info: https://aws.amazon.com/s3/pricing/")
     print("====================================================")
 
 
@@ -228,7 +228,11 @@ def s3_main(terraform_data=None, params=None):
         "get_requests": 10000
     }
 
+    allowed_keys = set(user_defaults.keys())
     if isinstance(params, dict):
+        unknown_keys = set(params.keys()) - allowed_keys
+        if unknown_keys:
+            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["storage_gb"] = params.get("storage_gb", user_defaults["storage_gb"])
         user_defaults["put_requests"] = params.get("put_requests", user_defaults["put_requests"])
         user_defaults["get_requests"] = params.get("get_requests", user_defaults["get_requests"])

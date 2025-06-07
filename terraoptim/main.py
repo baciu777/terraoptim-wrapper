@@ -94,27 +94,27 @@ def process_optimizations(optimization_types, plan_data):
 
         # Process the optimization types
         if optimization_type == "ec2":
-            print(f"🔧 Running EC2 optimization with parameters: {params}")
+            print(f" Running EC2 optimization with parameters: {params}")
             ec2_main(plan_data, params)
 
         elif optimization_type == "lambda":
-            print(f"🔧 Running Lambda optimization with parameters: {params}")
+            print(f" Running Lambda optimization with parameters: {params}")
             lambda_main(plan_data, params)
 
         elif optimization_type == "s3":
-            print(f"🔧 Running S3 optimization with parameters: {params}")
+            print(f" Running S3 optimization with parameters: {params}")
             s3_main(plan_data, params)
         elif optimization_type == "dynamodb":
-            print(f"🔧 Running DynamoDB optimization with parameters: {params}")
+            print(f" Running DynamoDB optimization with parameters: {params}")
             dynamodb_main(plan_data, params)
         elif optimization_type == "glue":
-            print(f"🔧 Running Glue optimization with parameters: {params}")
+            print(f" Running Glue optimization with parameters: {params}")
             glue_main(plan_data, params)
         elif optimization_type == "unused":
-            print(f"🔧 Running Unused Resource Check with parameters: {params}")
+            print(f" Running Unused Resource Check with parameters: {params}")
             unused_main(params)
         else:
-            print(f"❌ Unsupported optimization type: {optimization_type}")
+            print(f" Unsupported optimization type: {optimization_type}")
 
 
 def main():

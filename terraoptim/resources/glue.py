@@ -149,7 +149,7 @@ def print_glue_job_costs(jobs, hours, region):
 
 def print_glue_total_cost(total_glue_cost):
     print(f"\n Total Estimated Monthly Cost: ${round(total_glue_cost, 3)}")
-    print("\n🔗 More info: https://aws.amazon.com/glue/pricing/")
+    print("\n More info: https://aws.amazon.com/glue/pricing/")
     print("=====================================================")
 
 def glue_main(terraform_data, params=None):
@@ -166,7 +166,11 @@ def glue_main(terraform_data, params=None):
         "hours": 10,  # total monthly usage in hours
     }
 
+    allowed_keys = set(user_defaults.keys())
     if isinstance(params, dict):
+        unknown_keys = set(params.keys()) - allowed_keys
+        if unknown_keys:
+            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["hours"] = params.get("hours", user_defaults["hours"])
     hours = user_defaults["hours"]
     print(f" Hours: {hours}")

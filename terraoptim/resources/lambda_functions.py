@@ -143,7 +143,7 @@ def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
     print(f"  Compute Cost: ${final_compute_cost}")
     print(f"  Request Cost: ${final_request_cost}")
     print(f"  Total Estimated Monthly Cost For All Lambdas: ${final_total_cost}")
-    print("\n🔗 More info: https://aws.amazon.com/lambda/pricing/")
+    print("\n More info: https://aws.amazon.com/lambda/pricing/")
     print("====================================================")
 
 
@@ -163,7 +163,11 @@ def lambda_main(terraform_data, params=None):
         "duration": None
     }
 
+    allowed_keys = set(user_defaults.keys())
     if isinstance(params, dict):
+        unknown_keys = set(params.keys()) - allowed_keys
+        if unknown_keys:
+            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
         user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
         user_defaults["duration"] = params.get("duration", user_defaults["duration"])
 

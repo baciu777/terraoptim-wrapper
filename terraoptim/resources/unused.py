@@ -20,7 +20,7 @@ def get_age_days(creation_time):
 
 def print_usage_message(name, age_days, days, used, usage_summary=None):
     if used:
-        print(f"  ✅ {name} - {usage_summary}.")
+        print(f"   {name} - {usage_summary}.")
     else:
         if age_days < 0:
             age_days = 0
@@ -154,7 +154,7 @@ def check_unused_dynamodb(days):
                 used = (read_sum + write_sum) > 0
                 print_usage_message(table, age_days, days, used, f"{int(read_sum)} reads / {int(write_sum)} writes")
             except Exception as e:
-                print(f"  ⚠️ {table}: {e}")
+                print(f"  ️ {table}: {e}")
     except Exception as e:
         print(f"❌ DynamoDB list error: {e}")
 
@@ -163,17 +163,16 @@ def check_unused_glue(days):
     now = datetime.datetime.utcnow()
     cutoff = now - datetime.timedelta(days=days)
 
-    print("\n🧠 AWS Glue Jobs:")
+    print("\n AWS Glue Jobs:")
     try:
         jobs = glue.get_jobs().get('Jobs', [])
         if not jobs:
-            print("  ℹ️ No Glue jobs found.")
+            print("  ️ No Glue jobs found.")
         for job in jobs:
             name = job["Name"]
             try:
                 history = glue.get_job_runs(JobName=name, MaxResults=5).get('JobRuns', [])
                 if not history:
-                    creation_time = now
                     age_days = 0
                     used = False
                 else:
@@ -183,7 +182,7 @@ def check_unused_glue(days):
                     used = latest >= cutoff
                 print_usage_message(name, age_days, days, used, "Recently run" if used else None)
             except Exception as e:
-                print(f"  ⚠️ {name}: {e}")
+                print(f"  ️ {name}: {e}")
     except Exception as e:
         print(f"❌ Glue job list error: {e}")
 
@@ -197,12 +196,12 @@ def check_unused_ec2(days):
         print(f"❌ EC2 Check Error: {e}")
         return
 
-    print("\n🧠 EC2 Instances:")
+    print("\n EC2 Instances:")
     try:
         reservations = ec2_client.describe_instances().get("Reservations", [])
         instances = [i for r in reservations for i in r.get("Instances", [])]
         if not instances:
-            print("  ℹ️ No EC2 instances found.")
+            print("  ️ No EC2 instances found.")
         for instance in instances:
             instance_id = instance["InstanceId"]
             launch_time = instance["LaunchTime"].replace(tzinfo=None)
@@ -223,7 +222,7 @@ def check_unused_ec2(days):
                 avg_cpu = sum(dp['Average'] for dp in datapoints) / len(datapoints) if datapoints else 0
                 print_usage_message(instance_id, age_days, days, used, f"CPU usage ({avg_cpu:.2f}%)")
             except Exception as e:
-                print(f"  ⚠️ {instance_id}: {e}")
+                print(f"  ️ {instance_id}: {e}")
     except Exception as e:
         print(f"❌ EC2 list error: {e}")
 
