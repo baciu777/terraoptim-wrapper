@@ -145,6 +145,7 @@ def apply_free_tier(total_read, total_write, total_storage, prices):
     Returns:
         dict: Billable units after free tier and total discount value.
     """
+
     billable_read = max(total_read - FREE_TIER_READ_CAPACITY, 0)
     billable_write = max(total_write - FREE_TIER_WRITE_CAPACITY, 0)
     billable_storage = max(total_storage - FREE_TIER_STORAGE_GB, 0)

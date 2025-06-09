@@ -28,7 +28,7 @@ def extract_lambda_functions(terraform_data):
             timeout = after.get("timeout", 3)
             architecture = after.get("architectures", ["x86_64"])[0]
             functions.append({
-                "name": after.get("function_name"),
+                "name": after.get("name"),
                 "memory": memory,
                 "timeout": timeout,
                 "architecture": architecture,
@@ -53,32 +53,31 @@ def get_lambda_price(region, architecture="x86_64"):
         location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
         filters = [
             {"Type": "TERM_MATCH", "Field": "location", "Value": location},
-            {"Type": "TERM_MATCH", "Field": "productFamily", "Value": "Lambda"},
-            {"Type": "TERM_MATCH", "Field": "operation", "Value": "Invoke"},
+            {"Type": "TERM_MATCH", "Field": "servicename", "Value": "AWS Lambda"},
         ]
+        gb_sec_desc = "AWS Lambda - Total Compute (Provisioned) -"
 
         if architecture == "arm64":
-            filters.append({"Type": "TERM_MATCH", "Field": "processorArchitecture", "Value": "AWS Graviton"})
-
+            gb_sec_desc = "AWS Lambda - Total Compute (Provisioned) for ARM -"
         response = client.get_products(
             ServiceCode="AWSLambda",
             Filters=filters,
             MaxResults=100,
         )
-
         gb_sec_price = None
         request_price = None
-
         for product_json in response["PriceList"]:
             product = json.loads(product_json)
             terms = product["terms"]["OnDemand"]
             for term in terms.values():
+
                 for dim in term["priceDimensions"].values():
                     desc = dim["description"].lower()
-                    if "duration" in desc:
+                    if gb_sec_desc.lower() in desc.lower():
                         gb_sec_price = float(dim["pricePerUnit"]["USD"])
-                    elif "requests" in desc:
+                    elif "requests" in desc.lower():
                         request_price = float(dim["pricePerUnit"]["USD"])
+
         return gb_sec_price, request_price
     except Exception as e:
         print(f"️  Failed to fetch lambda price: {e}")
@@ -98,6 +97,7 @@ def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
     Returns:
         dict: Cost breakdown including compute, request, and total costs.
     """
+
     mem_gb = lambda_func["memory"] / 1024
     total_gb_seconds = monthly_requests * mem_gb * avg_duration
 
@@ -108,7 +108,7 @@ def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
     total = request_cost + compute_cost
 
     return {
-        "function_name": lambda_func["name"],
+        "name": lambda_func["name"],
         "memory": lambda_func["memory"],
         "architecture": lambda_func["architecture"],
         "requests": monthly_requests,
@@ -149,10 +149,38 @@ def calculate_lambda_costs(functions, user_defaults, region):
     return cost_results, total_gb_seconds, total_invocations
 
 
-def print_lambda_function_costs(cost_results):
+def suggest_graviton_alternative(lambda_func, monthly_requests, avg_duration, region):
+    """
+    Print a side-by-side comparison of current architecture vs Graviton (arm64) for cost savings.
+
+    Args:
+        lambda_func (dict): Current Lambda function metadata.
+        monthly_requests (int): Monthly invocations.
+        avg_duration (float): Average duration in seconds.
+        region (str): AWS region code.
+    """
+    current_cost = lambda_func['total_cost']
+    graviton_func = lambda_func.copy()
+    graviton_func["architecture"] = "arm64"
+    graviton_cost = estimate_lambda_cost(graviton_func, monthly_requests, avg_duration, region)
+
+    print(f"\n    ➤ Potential Graviton Savings:")
+    print(f"       Architecture       | Total Monthly Cost")
+    print(f"       -------------------|-------------------")
+    print(f"       x86_64             | ${current_cost}")
+    print(f"       arm64              | ${graviton_cost['total_cost']}")
+
+    if graviton_cost["total_cost"] < current_cost:
+        savings = round(current_cost - graviton_cost["total_cost"], 4)
+        print(f"        You could save ~${savings}/month by switching to arm64.\n")
+    else:
+        print("        No cost savings from switching to arm64 in this case.\n")
+
+
+def print_lambda_function_costs(cost_results, region):
     """Print detailed cost breakdown per Lambda function."""
     for cost in cost_results:
-        print(f"\n️ Function: {cost['function_name']} ({cost['architecture']})")
+        print(f"\n️ Function: {cost['name']} ({cost['architecture']})")
         print(f"    Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
         print(f"    Invocations: {cost['requests']} / month")
         print(f"    Compute Cost (before free tier): ${cost['compute_cost']}")
@@ -160,8 +188,12 @@ def print_lambda_function_costs(cost_results):
         print(f"    Total (before free tier): ${cost['total_cost']}")
 
         if cost["architecture"] == "x86_64":
-            print("    Tip: Consider switching to `arm64` (Graviton2) for ~20% lower cost.")
-
+            suggest_graviton_alternative(
+                lambda_func=cost,
+                monthly_requests=cost["requests"],
+                avg_duration=cost["duration"],
+                region=region
+            )
 
 def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
     """
@@ -198,12 +230,11 @@ def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
 
 
 def lambda_main(terraform_data, params=None):
-
     region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
     functions = extract_lambda_functions(terraform_data) if terraform_data else []
 
     if not functions:
-        print("❌ No Lambda functions found in Terraform plan.")
+        print(" No Lambda functions found in Terraform plan.")
         return
     print(f"\n Found {len(functions)} Lambda functions:")
 
@@ -223,7 +254,6 @@ def lambda_main(terraform_data, params=None):
     invocations = user_defaults["invocations"]
     print(f" Invocations: {invocations}")
 
-
     cost_results, total_gb_seconds, total_invocations = calculate_lambda_costs(functions, user_defaults, region)
-    print_lambda_function_costs(cost_results)
+    print_lambda_function_costs(cost_results, region)
     summarize_lambda_totals(total_gb_seconds, total_invocations, region)
