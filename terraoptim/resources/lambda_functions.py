@@ -41,7 +41,7 @@ def get_lambda_price(region, architecture="x86_64"):
     Fetch Lambda pricing per GB-second and per request from AWS Pricing API.
 
     Args:
-        region (str): AWS region code (e.g., 'us-east-1').
+        region (str): AWS region code.
         architecture (str): Processor architecture, default is 'x86_64'.
 
     Returns:
@@ -230,30 +230,33 @@ def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
 
 
 def lambda_main(terraform_data, params=None):
-    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    functions = extract_lambda_functions(terraform_data) if terraform_data else []
+    try:
+        region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
+        functions = extract_lambda_functions(terraform_data) if terraform_data else []
 
-    if not functions:
-        print(" No Lambda functions found in Terraform plan.")
-        return
-    print(f"\n Found {len(functions)} Lambda functions:")
+        if not functions:
+            print(" No Lambda functions found in Terraform plan.")
+            return
+        print(f"\n Found {len(functions)} Lambda functions:")
 
-    user_defaults = {
-        "invocations": 1_000_000,
-        "duration": None
-    }
+        user_defaults = {
+            "invocations": 1_000_000,
+            "duration": None
+        }
 
-    allowed_keys = set(user_defaults.keys())
-    if isinstance(params, dict):
-        unknown_keys = set(params.keys()) - allowed_keys
-        if unknown_keys:
-            print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
-        user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
-        user_defaults["duration"] = params.get("duration", user_defaults["duration"])
+        allowed_keys = set(user_defaults.keys())
+        if isinstance(params, dict):
+            unknown_keys = set(params.keys()) - allowed_keys
+            if unknown_keys:
+                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
+            user_defaults["duration"] = params.get("duration", user_defaults["duration"])
 
-    invocations = user_defaults["invocations"]
-    print(f" Invocations: {invocations}")
+        invocations = user_defaults["invocations"]
+        print(f" Invocations: {invocations}")
 
-    cost_results, total_gb_seconds, total_invocations = calculate_lambda_costs(functions, user_defaults, region)
-    print_lambda_function_costs(cost_results, region)
-    summarize_lambda_totals(total_gb_seconds, total_invocations, region)
+        cost_results, total_gb_seconds, total_invocations = calculate_lambda_costs(functions, user_defaults, region)
+        print_lambda_function_costs(cost_results, region)
+        summarize_lambda_totals(total_gb_seconds, total_invocations, region)
+    except Exception as e:
+        print(f"️ Error calculating lambda optimization: {e}")

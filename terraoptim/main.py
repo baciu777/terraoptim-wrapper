@@ -81,18 +81,16 @@ def process_optimizations(optimization_types, plan_data):
         # Collect all key=value args until the next optimization type (e.g., ec2, lambda, etc.)
         while i < len(optimization_types) and "=" in optimization_types[i]:
             key, value = optimization_types[i].split("=", 1)
-            # Try to convert numeric values
             try:
                 value = int(value)
             except ValueError:
                 try:
                     value = float(value)
                 except ValueError:
-                    pass  # Keep as string
+                    pass
             params[key] = value
             i += 1
 
-        # Process the optimization types
         if optimization_type == "ec2":
             print(f" Running EC2 optimization with parameters: {params}")
             ec2_main(plan_data, params)
@@ -121,12 +119,10 @@ def main():
     try:
         parser = argparse.ArgumentParser(description="Terraform Cost Optimization Tool")
 
-        # Allow optimizations to be optional
         parser.add_argument(
             "--optimization", "-o", help="Optimization types with parameters"
         )
 
-        # Allow additional arguments to be passed for the terraform command (like -var, etc.)
         parser.add_argument(
             "additional_args", nargs=argparse.REMAINDER, help="Additional arguments for the terraform command"
         )

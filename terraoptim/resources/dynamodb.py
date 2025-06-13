@@ -301,50 +301,53 @@ def summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, 
     print("====================================================")
 
 def dynamodb_main(terraform_data=None, params=None):
-    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    tables = extract_dynamodb_tables(terraform_data) if terraform_data else []
+    try:
+        region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
+        tables = extract_dynamodb_tables(terraform_data) if terraform_data else []
 
-    if not tables:
-        print("️ No DynamoDB tables found in Terraform data.")
-        return
-    print(f"\n Found {len(tables)} DynamoDB Tables:")
+        if not tables:
+            print("️ No DynamoDB tables found in Terraform data.")
+            return
+        print(f"\n Found {len(tables)} DynamoDB Tables:")
 
-    user_defaults = {
-        "reads": 1_000_000,
-        "writes": 500_000,
-        "storage": 10
-    }
-    allowed_keys = set(user_defaults.keys())
-    if isinstance(params, dict):
-        unknown_keys = set(params.keys()) - allowed_keys
-        if unknown_keys:
-            print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
-        user_defaults["reads"] = params.get("reads", user_defaults["reads"])
-        user_defaults["writes"] = params.get("writes", user_defaults["writes"])
-        user_defaults["storage"] = params.get("storage", user_defaults["storage"])
+        user_defaults = {
+            "reads": 1_000_000,
+            "writes": 500_000,
+            "storage": 10
+        }
+        allowed_keys = set(user_defaults.keys())
+        if isinstance(params, dict):
+            unknown_keys = set(params.keys()) - allowed_keys
+            if unknown_keys:
+                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            user_defaults["reads"] = params.get("reads", user_defaults["reads"])
+            user_defaults["writes"] = params.get("writes", user_defaults["writes"])
+            user_defaults["storage"] = params.get("storage", user_defaults["storage"])
 
-    reads = user_defaults["reads"]
-    writes = user_defaults["writes"]
-    storage = user_defaults["storage"]
+        reads = user_defaults["reads"]
+        writes = user_defaults["writes"]
+        storage = user_defaults["storage"]
 
-    print(f" Reads: {reads}")
-    print(f" Writes: {writes}")
-    print(f" Storage: {storage}")
-    prices = {
-        "read_prov": get_dynamodb_price_provisioned(region, "ReadCapacityUnit-Hrs"),
-        "write_prov": get_dynamodb_price_provisioned(region, "WriteCapacityUnit-Hrs"),
-        "storage": get_dynamodb_price_provisioned(region, "TimedStorage-ByteHrs"),
-        "read_ondemand": get_dynamodb_price_on_demand(region, "ReadRequestUnits"),
-        "write_ondemand": get_dynamodb_price_on_demand(region, "WriteRequestUnits"),
-    }
-    if not all(prices.values()):
-        print("❌ Unable to retrieve all required prices.")
-        return
+        print(f" Reads: {reads}")
+        print(f" Writes: {writes}")
+        print(f" Storage: {storage}")
+        prices = {
+            "read_prov": get_dynamodb_price_provisioned(region, "ReadCapacityUnit-Hrs"),
+            "write_prov": get_dynamodb_price_provisioned(region, "WriteCapacityUnit-Hrs"),
+            "storage": get_dynamodb_price_provisioned(region, "TimedStorage-ByteHrs"),
+            "read_ondemand": get_dynamodb_price_on_demand(region, "ReadRequestUnits"),
+            "write_ondemand": get_dynamodb_price_on_demand(region, "WriteRequestUnits"),
+        }
+        if not all(prices.values()):
+            print("❌ Unable to retrieve all required prices.")
+            return
 
 
-    results, total_prov_read, total_prov_write, total_storage, total_cost = calculate_dynamodb_table_costs(
-        tables, prices, user_defaults
-    )
+        results, total_prov_read, total_prov_write, total_storage, total_cost = calculate_dynamodb_table_costs(
+            tables, prices, user_defaults
+        )
 
-    print_dynamodb_table_costs(results)
-    summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults)
+        print_dynamodb_table_costs(results)
+        summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults)
+    except Exception as e:
+        print(f"️ Error calculating dynamodb optimization: {e}")

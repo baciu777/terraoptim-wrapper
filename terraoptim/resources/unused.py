@@ -4,6 +4,15 @@ import boto3
 DEFAULT_DAYS = 30
 
 def get_time_range(days):
+    """
+    Calculate the time window based on days.
+
+    Args:
+        days (int): Number of days to look back.
+
+    Returns:
+        tuple: (start_time, now) as datetime objects.
+    """
     now = datetime.datetime.utcnow()
     if days <= 0:
         start_time = now - datetime.timedelta(hours=1)
@@ -19,6 +28,16 @@ def get_age_days(creation_time):
     return (datetime.datetime.utcnow() - creation_time).days
 
 def print_usage_message(name, age_days, days, used, usage_summary=None):
+    """
+    Print resource usage information to console.
+
+    Args:
+        name (str): Resource name.
+        age_days (int): Resource age in days.
+        days (int): Days threshold for usage.
+        used (bool): Whether resource is considered used.
+        usage_summary (str, optional): Custom usage message.
+    """
     if used:
         print(f"   {name} - {usage_summary}.")
     else:
@@ -30,6 +49,12 @@ def print_usage_message(name, age_days, days, used, usage_summary=None):
             print(f" ❌ {name} - No activity in {days} days.")
 
 def check_unused_lambdas(days):
+    """
+    Check for unused AWS Lambda functions.
+
+    Args:
+        days (int): Time window in days to consider for usage.
+    """
     lambda_client = boto3.client("lambda")
     cloudwatch_client = boto3.client("cloudwatch")
 
@@ -71,6 +96,12 @@ def check_unused_lambdas(days):
         print(f"❌ Lambda list error: {e}")
 
 def check_unused_s3(days):
+    """
+    Check for unused S3 buckets based on object activity.
+
+    Args:
+        days (int): Time window in days to consider for usage.
+    """
     s3 = boto3.resource("s3")
     cloudwatch_client = boto3.client("cloudwatch")
 
@@ -111,6 +142,12 @@ def check_unused_s3(days):
         print(f"❌ S3 list error: {e}")
 
 def check_unused_dynamodb(days):
+    """
+    Check for unused DynamoDB tables based on read/write capacity.
+
+    Args:
+        days (int): Time window in days to consider for usage.
+    """
     dynamodb = boto3.client("dynamodb")
     cloudwatch = boto3.client("cloudwatch")
 
@@ -159,6 +196,12 @@ def check_unused_dynamodb(days):
         print(f"❌ DynamoDB list error: {e}")
 
 def check_unused_glue(days):
+    """
+    Check for unused AWS Glue jobs based on recent job runs.
+
+    Args:
+        days (int): Time window in days to consider for usage.
+    """
     glue = boto3.client("glue")
     now = datetime.datetime.utcnow()
     cutoff = now - datetime.timedelta(days=days)
@@ -187,6 +230,12 @@ def check_unused_glue(days):
         print(f"❌ Glue job list error: {e}")
 
 def check_unused_ec2(days):
+    """
+    Check for unused EC2 instances based on CPU utilization.
+
+    Args:
+        days (int): Time window in days to consider for usage.
+    """
     ec2_client = boto3.client("ec2")
     cloudwatch_client = boto3.client("cloudwatch")
 
@@ -227,11 +276,14 @@ def check_unused_ec2(days):
         print(f"❌ EC2 list error: {e}")
 
 def unused_main(params=None):
-    days = params.get("days") if params else DEFAULT_DAYS
-    print(f" Scanning for resources unused in the past {days} days...")
-    check_unused_lambdas(days)
-    check_unused_s3(days)
-    check_unused_dynamodb(days)
-    check_unused_glue(days)
-    check_unused_ec2(days)
-    print("====================================================")
+    try:
+        days = params.get("days") if params else DEFAULT_DAYS
+        print(f" Scanning for resources unused in the past {days} days...")
+        check_unused_lambdas(days)
+        check_unused_s3(days)
+        check_unused_dynamodb(days)
+        check_unused_glue(days)
+        check_unused_ec2(days)
+        print("====================================================")
+    except Exception as e:
+        print(f"️ Error calculating unused optimization: {e}")

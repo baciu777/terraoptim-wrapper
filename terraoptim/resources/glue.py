@@ -27,7 +27,7 @@ def get_glue_price(region, worker_type="Standard"):
     Fetch AWS Glue price per DPU hour for a given region and worker type.
 
     Args:
-        region (str): AWS region code (e.g., 'us-east-1').
+        region (str): AWS region code.
         worker_type (str): Glue worker type (default: "Standard").
 
     Returns:
@@ -204,26 +204,28 @@ def print_glue_total_cost(total_glue_cost):
     print("=====================================================")
 
 def glue_main(terraform_data, params=None):
-    """ Run AWS Glue job cost estimates and recommendations """
-    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
+    try:
+        region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
 
-    jobs = extract_glue_jobs(terraform_data)
-    if not jobs:
-        print("❌ No Glue jobs found in Terraform plan.")
-        return
-    print(f"\n Found {len(jobs)} Glue Jobs:")
+        jobs = extract_glue_jobs(terraform_data)
+        if not jobs:
+            print("❌ No Glue jobs found in Terraform plan.")
+            return
+        print(f"\n Found {len(jobs)} Glue Jobs:")
 
-    user_defaults = {
-        "hours": 10,  # total monthly usage in hours
-    }
+        user_defaults = {
+            "hours": 10,  # total monthly usage in hours
+        }
 
-    allowed_keys = set(user_defaults.keys())
-    if isinstance(params, dict):
-        unknown_keys = set(params.keys()) - allowed_keys
-        if unknown_keys:
-            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
-        user_defaults["hours"] = params.get("hours", user_defaults["hours"])
-    hours = user_defaults["hours"]
-    print(f" Hours: {hours}")
-    total_glue_cost = print_glue_job_costs(jobs, hours, region)
-    print_glue_total_cost(total_glue_cost)
+        allowed_keys = set(user_defaults.keys())
+        if isinstance(params, dict):
+            unknown_keys = set(params.keys()) - allowed_keys
+            if unknown_keys:
+                print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            user_defaults["hours"] = params.get("hours", user_defaults["hours"])
+        hours = user_defaults["hours"]
+        print(f" Hours: {hours}")
+        total_glue_cost = print_glue_job_costs(jobs, hours, region)
+        print_glue_total_cost(total_glue_cost)
+    except Exception as e:
+        print(f"️ Error calculating glue optimization: {e}")

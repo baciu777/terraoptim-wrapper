@@ -170,11 +170,9 @@ def get_spot_price(instance_type, region):
     try:
         ec2 = boto3.client("ec2", region_name=region)
 
-        # Define the time range: last 10 hours
         end_time = datetime.utcnow()
         start_time = end_time - timedelta(hours=10)
 
-        # Fetch spot price history
         response = ec2.describe_spot_price_history(
             InstanceTypes=[instance_type],
             ProductDescriptions=["Linux/UNIX"],
@@ -252,31 +250,32 @@ def summarize_ec2_totals(total_on_demand, total_spot):
     print("====================================================")
 
 def ec2_main(terraform_data, params=None):
-    """ Main function to run EC2 cost optimization logic """
+    try:
+        region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
+        instances = extract_ec2_instances(terraform_data) if terraform_data else []
 
-    region = extract_region_from_terraform_plan(terraform_data) or "us-east-1"
-    instances = extract_ec2_instances(terraform_data) if terraform_data else []
+        if not instances:
+            print(" No EC2 instances found in Terraform plan.")
+            return
+        print(f"\n Found {len(instances)} EC2 instances:")
 
-    if not instances:
-        print(" No EC2 instances found in Terraform plan.")
-        return
-    print(f"\n Found {len(instances)} EC2 instances:")
+        user_defaults = {
+            "hours": 720
+        }
+        allowed_keys = set(user_defaults.keys())
+        if isinstance(params, dict):
+            unknown_keys = set(params.keys()) - allowed_keys
+            if unknown_keys:
+                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
 
-    user_defaults = {
-        "hours": 720
-    }
-    allowed_keys = set(user_defaults.keys())
-    if isinstance(params, dict):
-        unknown_keys = set(params.keys()) - allowed_keys
-        if unknown_keys:
-            print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            user_defaults["hours"] = params.get("hours", user_defaults["hours"])
 
-        user_defaults["hours"] = params.get("hours", user_defaults["hours"])
+        hours = user_defaults["hours"]
+        print(f" Hours: {hours}")
 
-    hours = user_defaults["hours"]
-    print(f" Hours: {hours}")
+        instance_categories = fetch_ec2_instance_types(region)
 
-    instance_categories = fetch_ec2_instance_types(region)
-
-    total_on_demand, total_spot = calculate_ec2_costs(instances, hours, region, instance_categories)
-    summarize_ec2_totals(total_on_demand, total_spot)
+        total_on_demand, total_spot = calculate_ec2_costs(instances, hours, region, instance_categories)
+        summarize_ec2_totals(total_on_demand, total_spot)
+    except Exception as e:
+        print(f"️ Error calculating ec2 optimization: {e}")
