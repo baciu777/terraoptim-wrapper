@@ -80,7 +80,8 @@ def get_lambda_price(region, architecture="x86_64"):
 
         return gb_sec_price, request_price
     except Exception as e:
-        print(f"️  Failed to fetch lambda price: {e}")
+        print(f"️  Failed to fetch lambda price")
+        raise e
     return None, None
 
 
@@ -179,13 +180,13 @@ def suggest_graviton_alternative(lambda_func, monthly_requests, avg_duration, re
 
 def print_lambda_function_costs(cost_results, region):
     """Print detailed cost breakdown per Lambda function."""
-    for cost in cost_results:
-        print(f"\n️ Function: {cost['name']} ({cost['architecture']})")
+    for i,cost in enumerate(cost_results):
+        print(f"\n️ Function: {i+1} ({cost['architecture']})")
         print(f"    Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
         print(f"    Invocations: {cost['requests']} / month")
-        print(f"    Compute Cost (before free tier): ${cost['compute_cost']}")
-        print(f"    Request Cost (before free tier): ${cost['request_cost']}")
-        print(f"    Total (before free tier): ${cost['total_cost']}")
+        print(f"    Compute Cost: ${cost['compute_cost']}")
+        print(f"    Request Cost: ${cost['request_cost']}")
+        print(f"    Total: ${cost['total_cost']}")
 
         if cost["architecture"] == "x86_64":
             suggest_graviton_alternative(
@@ -224,7 +225,7 @@ def summarize_lambda_totals(total_gb_seconds, total_invocations, region):
     print(f"\n Final Monthly Cost After Free Tier:")
     print(f"  Compute Cost: ${final_compute_cost}")
     print(f"  Request Cost: ${final_request_cost}")
-    print(f"  Total Estimated Monthly Cost For All Lambdas: ${final_total_cost}")
+    print(f" Total Estimated Monthly Cost For All Lambdas: ${final_total_cost}")
     print("\n More info: https://aws.amazon.com/lambda/pricing/")
     print("====================================================")
 
@@ -259,4 +260,4 @@ def lambda_main(terraform_data, params=None):
         print_lambda_function_costs(cost_results, region)
         summarize_lambda_totals(total_gb_seconds, total_invocations, region)
     except Exception as e:
-        print(f"️ Error calculating lambda optimization: {e}")
+        print(f"️ Error calculating lambda optimization")

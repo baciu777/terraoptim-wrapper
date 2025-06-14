@@ -46,7 +46,7 @@ def print_usage_message(name, age_days, days, used, usage_summary=None):
         if age_days < days:
             print(f"   {name} - Created {age_days} days ago.")
         else:
-            print(f" ❌ {name} - No activity in {days} days.")
+            print(f"   {name} - No activity in {days} days.")
 
 def check_unused_lambdas(days):
     """
@@ -61,7 +61,7 @@ def check_unused_lambdas(days):
     try:
         start_time, now = get_time_range(days)
     except ValueError as e:
-        print(f"❌ Lambda Check Error: {e}")
+        print(f" Lambda Check Error: {e}")
         return
 
     print("\n Lambda Functions:")
@@ -242,7 +242,7 @@ def check_unused_ec2(days):
     try:
         start_time, now = get_time_range(days)
     except ValueError as e:
-        print(f"❌ EC2 Check Error: {e}")
+        print(f" EC2 Check Error: {e}")
         return
 
     print("\n EC2 Instances:")

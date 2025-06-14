@@ -187,7 +187,8 @@ def get_spot_price(instance_type, region):
             avg_hourly_price = sum(prices) / len(prices)
             return avg_hourly_price
     except Exception as e:
-        print(f"️  Failed to fetch spot price for {instance_type}: {e}")
+        print(f"️  Failed to fetch spot price for {instance_type}")
+        raise e
     return None
 
 
@@ -278,4 +279,4 @@ def ec2_main(terraform_data, params=None):
         total_on_demand, total_spot = calculate_ec2_costs(instances, hours, region, instance_categories)
         summarize_ec2_totals(total_on_demand, total_spot)
     except Exception as e:
-        print(f"️ Error calculating ec2 optimization: {e}")
+        print(f"️ Error calculating ec2 optimization")

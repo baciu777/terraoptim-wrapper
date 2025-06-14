@@ -67,7 +67,8 @@ def get_dynamodb_price(region, usage_type, filter_description=False):
                     else:
                         return float(price)
     except Exception as e:
-        print(f"️ Error fetching price for {usage_type}: {e}")
+        print(f"️ Failed to fetch price for {usage_type}")
+        raise e
     return None
 
 
@@ -220,7 +221,7 @@ def calculate_dynamodb_table_costs(tables, prices, user_defaults):
         result = calculate_table_cost(table, prices, user_defaults)
         if result is None:
             results.append({
-                "index": i,
+                "index": i+1,
                 "skipped": True
             })
             continue
@@ -279,11 +280,24 @@ def summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, 
     """
     tier = apply_free_tier(total_prov_read, total_prov_write, total_storage, prices)
     adjusted_cost = round(total_cost - tier["discount"], 3)
+    read_final = round(tier['billable_read'] * HOURS_PER_MONTH * prices["read_prov"],3)
+    write_final = round(tier['billable_write'] * HOURS_PER_MONTH * prices["write_prov"],3)
+    storage_final = round(tier['billable_storage'] * prices["storage"],3)
 
-    print(" Totals After Free Tier (provisioned tables only):")
-    print(f"   Read Units (billable): {tier['billable_read']}")
-    print(f"   Write Units (billable): {tier['billable_write']}")
-    print(f"   Storage GB (billable): {tier['billable_storage']}")
+    print("\n AWS Free Tier Limits:")
+    print(f"   {FREE_TIER_READ_CAPACITY} read units")
+    print(f"   {FREE_TIER_WRITE_CAPACITY} write units")
+    print(f"   {FREE_TIER_STORAGE_GB} GB storage\n")
+
+    print(f"\n Total Usage This Month:")
+    print(f"   Read Units: {total_prov_read} (Billable: {tier['billable_read']})")
+    print(f"   Write Units: {total_prov_write} (Billable: {tier['billable_write']})")
+    print(f"   Storage GB: {total_storage} (Billable: {tier['billable_storage']})")
+
+    print("\n Final Monthly Cost After Free Tier (provisioned tables only):")
+    print(f"   Read Units: ${read_final}")
+    print(f"   Write Units: ${write_final}")
+    print(f"   Storage: ${storage_final}")
     print(f"   Free Tier Discount: ${tier['discount']}")
     print(f" Total Estimated Monthly Cost For All Tables: ${adjusted_cost}")
 
@@ -339,7 +353,7 @@ def dynamodb_main(terraform_data=None, params=None):
             "write_ondemand": get_dynamodb_price_on_demand(region, "WriteRequestUnits"),
         }
         if not all(prices.values()):
-            print("❌ Unable to retrieve all required prices.")
+            print(" Unable to retrieve all required prices.")
             return
 
 
@@ -350,4 +364,4 @@ def dynamodb_main(terraform_data=None, params=None):
         print_dynamodb_table_costs(results)
         summarize_dynamodb_totals(total_prov_read, total_prov_write, total_storage, total_cost, prices, user_defaults)
     except Exception as e:
-        print(f"️ Error calculating dynamodb optimization: {e}")
+        print(f"️ Error calculating dynamodb optimization")

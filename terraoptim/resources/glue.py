@@ -58,7 +58,8 @@ def get_glue_price(region, worker_type="Standard"):
                 for dim in term.get("priceDimensions", {}).values():
                     return float(dim["pricePerUnit"]["USD"])
     except Exception as e:
-        print(f"️  Failed to fetch glue price for {worker_type}: {e}")
+        print(f"️  Failed to fetch glue price for {worker_type}")
+        raise e
     return None
 
 
@@ -209,7 +210,7 @@ def glue_main(terraform_data, params=None):
 
         jobs = extract_glue_jobs(terraform_data)
         if not jobs:
-            print("❌ No Glue jobs found in Terraform plan.")
+            print(" No Glue jobs found in Terraform plan.")
             return
         print(f"\n Found {len(jobs)} Glue Jobs:")
 
@@ -221,11 +222,11 @@ def glue_main(terraform_data, params=None):
         if isinstance(params, dict):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
-                print(f"⚠️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
             user_defaults["hours"] = params.get("hours", user_defaults["hours"])
         hours = user_defaults["hours"]
         print(f" Hours: {hours}")
         total_glue_cost = print_glue_job_costs(jobs, hours, region)
         print_glue_total_cost(total_glue_cost)
     except Exception as e:
-        print(f"️ Error calculating glue optimization: {e}")
+        print(f"️ Error calculating glue optimization")

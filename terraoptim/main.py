@@ -12,11 +12,15 @@ from terraoptim.resources.unused import unused_main
 
 
 def run_terraform_command(terraform_args):
-    """Function to run terraform commands directly."""
+    """
+    Run terraform command with provided arguments.
+
+    Args:
+        terraform_args (list): List of arguments to pass to the terraform command.
+    """
     try:
         print(f"Running terraform {' '.join(terraform_args)} ...")
 
-        # Run the terraform command with provided arguments
         subprocess.run(["terraform"] + terraform_args, check=True)
 
     except subprocess.CalledProcessError as e:
@@ -24,15 +28,33 @@ def run_terraform_command(terraform_args):
 
 
 def run_plan(terraform_args):
+    """
+    Execute 'terraform plan' and output to a plan file.
+
+    Args:
+        terraform_args (list): Arguments for the terraform command (e.g., ["plan", "-var-file=..."]).
+
+    Returns:
+        bool: True if the plan ran successfully, False otherwise.
+    """
     try:
         print(f"Running terraform {' '.join(terraform_args)} ...")
         subprocess.run(["terraform"] + terraform_args + ["-out=terraform.tfplan"], check=True)
         return True
-    except subprocess.CalledProcessError as e:
+    except subprocess.CalledProcessErroras as e:
         return False
 
 
 def run_apply(terraform_args):
+    """
+    Convert 'apply' command to 'plan', then execute 'terraform apply' using saved plan.
+
+    Args:
+        terraform_args (list): Terraform CLI arguments, including 'apply'.
+
+    Returns:
+        bool: True if apply was successful, False otherwise.
+    """
     try:
         print(f"Running terraform apply ...")
         terraform_args = ["plan" if arg == "apply" else arg for arg in terraform_args]
@@ -47,7 +69,12 @@ def run_apply(terraform_args):
         return False
 
 def load_terraform_plan():
-    """Load and parse the saved terraform plan."""
+    """
+    Load and parse the terraform plan from 'terraform.tfplan'.
+
+    Returns:
+        dict: Parsed terraform plan data as a dictionary.
+    """
     try:
         print("Loading terraform plan...")
         result = subprocess.run(
@@ -56,12 +83,19 @@ def load_terraform_plan():
         plan_data = json.loads(result.stdout)
         return plan_data
     except subprocess.CalledProcessError as e:
-        print(f"❌ Failed to load terraform plan: {e}")
+        print(f" Failed to load terraform plan: {e}")
         raise e
 
 
 def process_optimizations(optimization_types, plan_data):
-    """Process and execute the optimizations provided in the argument list."""
+    """
+    Process and apply specific optimization routines.
+
+    Args:
+        optimization_types (list): Optimization types and optional key=value parameters.
+        plan_data (dict): Parsed terraform plan data.
+
+    """
 
     if optimization_types == []:
         print("Running optimization without specific arguments...")

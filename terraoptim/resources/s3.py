@@ -57,7 +57,8 @@ def get_s3_storage_price(region, storage_class="STANDARD"):
                         return float(price)
 
     except Exception as e:
-        print(f"️ Error fetching S3 price: {e}")
+        print(f"️ Failed to fetch price for S3")
+        raise e
     return None
 
 
@@ -107,7 +108,8 @@ def get_s3_request_price(request_type, region):
                         price = dim["pricePerUnit"]["USD"]
                         return float(price)
     except Exception as e:
-        print(f"️ Error fetching {request_type} request pricing: {e}")
+        print(f"️ Failed to fetch price for {request_type} request ")
+        raise e
     return None
 
 
@@ -182,7 +184,7 @@ def calculate_s3_bucket_costs(buckets, terraform_data, user_defaults, region):
             transition_price = get_s3_storage_price(region, transition_class)
             cost_standard = round(storage_gb / 30 * transition_days * storage_price, 3)
             cost_transitioned = round(storage_gb / 30 * (30 - transition_days) * transition_price, 3)
-            storage_cost = cost_standard + cost_transitioned
+            storage_cost = round(cost_standard + cost_transitioned,3)
         else:
             storage_cost = round(storage_gb * storage_price, 3)
 
@@ -217,28 +219,26 @@ def print_s3_bucket_costs(results):
         print(f"    Storage Cost: ${r['storage_cost']}")
         print(f"    PUT Cost: ${r['put_cost']} | GET Cost: ${r['get_cost']}")
 
-def summarize_s3_totals(user_defaults, total_storage_cost, total_put_cost, total_get_cost, region):
+def summarize_s3_totals(no_buckets, user_defaults, total_storage_cost, total_put_cost, total_get_cost, region):
     """
     Prints overall usage and cost summary, including AWS Free Tier deductions.
     Args:
+        no_buckets (int): number of buckets
         user_defaults (dict): User-specified usage numbers.
         total_storage_cost (float): Total storage cost.
         total_put_cost (float): Total PUT request cost.
         total_get_cost (float): Total GET request cost.
         region (str): AWS region code.
     """
-    storage_gb = user_defaults["storage_gb"]
-    put_requests = user_defaults["put_requests"]
-    get_requests = user_defaults["get_requests"]
+    storage_gb = user_defaults["storage_gb"] * no_buckets
+    put_requests = user_defaults["put_requests"] * no_buckets
+    get_requests = user_defaults["get_requests"] * no_buckets
 
     storage_price = get_s3_storage_price(region, "STANDARD")
     put_price = get_s3_request_price("PUT", region)
     get_price = get_s3_request_price("GET", region)
 
-    print("\n Total (before free tier):")
-    print(f"   Storage Cost: ${total_storage_cost}")
-    print(f"   PUT Requests Cost: ${total_put_cost}")
-    print(f"   GET Requests Cost: ${total_get_cost}")
+
 
     print("\n AWS Free Tier Limits:")
     print(f"   {FREE_TIER_S3_GB} GB of storage / month")
@@ -250,15 +250,20 @@ def summarize_s3_totals(user_defaults, total_storage_cost, total_put_cost, total
     billable_get = max(get_requests - FREE_TIER_GET_REQUESTS, 0)
 
     cost_storage = round(max(total_storage_cost - FREE_TIER_S3_GB * storage_price, 0), 3)
-    cost_put = round(max(total_put_cost - FREE_TIER_PUT_REQUESTS * put_price, 0), 3)
-    cost_get = round(max(total_get_cost - FREE_TIER_GET_REQUESTS * get_price, 0), 3)
+    cost_put = round(max(total_put_cost - FREE_TIER_PUT_REQUESTS / 1000 * put_price, 0), 3)
+    cost_get = round(max(total_get_cost - FREE_TIER_GET_REQUESTS / 1000 * get_price, 0), 3)
 
     total = cost_storage + cost_put + cost_get
 
-    print(f"\n Total Usage This Month (Billable):")
-    print(f"   Storage: {billable_storage} GB | Cost: ${cost_storage}")
-    print(f"   PUT Requests: {billable_put} | Cost: ${cost_put}")
-    print(f"   GET Requests: {billable_get} | Cost: ${cost_get}")
+    print(f"\n Total Usage This Month:")
+    print(f"   Storage: {storage_gb} GB (Billable: {billable_storage})")
+    print(f"   PUT Requests: {put_requests} (Billable: {billable_put})")
+    print(f"   GET Requests: {get_requests} (Billable: {billable_get})")
+
+    print(f"\n Final Monthly Cost After Free Tier:")
+    print(f"   Storage: ${cost_storage}")
+    print(f"   PUT Requests: ${cost_put}")
+    print(f"   GET Requests: ${cost_get}")
     print(f" Total Estimated Monthly Cost For All Buckets: ${round(total, 3)}")
 
     print("\n More info: https://aws.amazon.com/s3/pricing/")
@@ -302,6 +307,7 @@ def s3_main(terraform_data=None, params=None):
         )
 
         print_s3_bucket_costs(results)
-        summarize_s3_totals(user_defaults, total_storage_cost, total_put_cost, total_get_cost, region)
+        summarize_s3_totals(len(results), user_defaults, total_storage_cost, total_put_cost,
+                            total_get_cost, region)
     except Exception as e:
-        print(f"️ Error calculating s3 optimization: {e}")
+        print(f"️ Error calculating s3 optimization")
