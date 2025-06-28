@@ -41,7 +41,7 @@ def get_dynamodb_price(region, usage_type, filter_description=False):
     pricing = boto3.client("pricing", region_name="us-east-1")
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
     region_prefix = REGION_CODE_MAP.get(region, "")
-    if region_prefix and region != "us-east-1":  # for us-east-1 there is no prefix
+    if region_prefix and region != "us-east-1":
         usage_type = f"{region_prefix}-{usage_type}"
 
     try:

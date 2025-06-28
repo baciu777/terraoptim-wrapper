@@ -215,7 +215,7 @@ def glue_main(terraform_data, params=None):
         print(f"\n Found {len(jobs)} Glue Jobs:")
 
         user_defaults = {
-            "hours": 10,  # total monthly usage in hours
+            "hours": 10,
         }
 
         allowed_keys = set(user_defaults.keys())

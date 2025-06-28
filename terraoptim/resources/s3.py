@@ -85,7 +85,7 @@ def get_s3_request_price(request_type, region):
         }.get(request_type)
 
         region_prefix = REGION_CODE_MAP.get(region, "")
-        if region_prefix and region != "us-east-1": # for us-east-1 there is no prefix
+        if region_prefix and region != "us-east-1":
             usage_type = f"{region_prefix}-{usage_base}"
         else:
             usage_type = usage_base
@@ -161,12 +161,12 @@ def calculate_s3_bucket_costs(buckets, terraform_data, user_defaults, region):
     Args:
         buckets (list): List of S3 bucket names.
         terraform_data (dict): Terraform plan data.
-        user_defaults (dict): Contains 'storage_gb', 'put_requests', 'get_requests'.
+        user_defaults (dict): Contains 'storage', 'put_requests', 'get_requests'.
         region (str): AWS region code.
     Returns:
         tuple: (results, total_storage_cost, total_put_cost, total_get_cost)
     """
-    storage_gb = user_defaults["storage_gb"]
+    storage = user_defaults["storage"]
     put_requests = user_defaults["put_requests"]
     get_requests = user_defaults["get_requests"]
 
@@ -182,11 +182,11 @@ def calculate_s3_bucket_costs(buckets, terraform_data, user_defaults, region):
 
         if transition_class and transition_days < 30:
             transition_price = get_s3_storage_price(region, transition_class)
-            cost_standard = round(storage_gb / 30 * transition_days * storage_price, 3)
-            cost_transitioned = round(storage_gb / 30 * (30 - transition_days) * transition_price, 3)
+            cost_standard = round(storage / 30 * transition_days * storage_price, 3)
+            cost_transitioned = round(storage / 30 * (30 - transition_days) * transition_price, 3)
             storage_cost = round(cost_standard + cost_transitioned,3)
         else:
-            storage_cost = round(storage_gb * storage_price, 3)
+            storage_cost = round(storage * storage_price, 3)
 
         put_cost = round((put_requests / 1000) * put_price, 3)
         get_cost = round((get_requests / 1000) * get_price, 3)
@@ -230,7 +230,7 @@ def summarize_s3_totals(no_buckets, user_defaults, total_storage_cost, total_put
         total_get_cost (float): Total GET request cost.
         region (str): AWS region code.
     """
-    storage_gb = user_defaults["storage_gb"] * no_buckets
+    storage = user_defaults["storage"] * no_buckets
     put_requests = user_defaults["put_requests"] * no_buckets
     get_requests = user_defaults["get_requests"] * no_buckets
 
@@ -245,7 +245,7 @@ def summarize_s3_totals(no_buckets, user_defaults, total_storage_cost, total_put
     print(f"   {FREE_TIER_PUT_REQUESTS} PUT requests / month")
     print(f"   {FREE_TIER_GET_REQUESTS} GET requests / month")
 
-    billable_storage = max(storage_gb - FREE_TIER_S3_GB, 0)
+    billable_storage = max(storage - FREE_TIER_S3_GB, 0)
     billable_put = max(put_requests - FREE_TIER_PUT_REQUESTS, 0)
     billable_get = max(get_requests - FREE_TIER_GET_REQUESTS, 0)
 
@@ -256,7 +256,7 @@ def summarize_s3_totals(no_buckets, user_defaults, total_storage_cost, total_put
     total = cost_storage + cost_put + cost_get
 
     print(f"\n Total Usage This Month:")
-    print(f"   Storage: {storage_gb} GB (Billable: {billable_storage})")
+    print(f"   Storage: {storage} GB (Billable: {billable_storage})")
     print(f"   PUT Requests: {put_requests} (Billable: {billable_put})")
     print(f"   GET Requests: {get_requests} (Billable: {billable_get})")
 
@@ -281,7 +281,7 @@ def s3_main(terraform_data=None, params=None):
         print(f"\n Found {len(buckets)} Buckets:")
 
         user_defaults = {
-            "storage_gb": 100,
+            "storage": 100,
             "put_requests": 1000,
             "get_requests": 10000
         }
@@ -291,15 +291,15 @@ def s3_main(terraform_data=None, params=None):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
                 print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
-            user_defaults["storage_gb"] = params.get("storage_gb", user_defaults["storage_gb"])
+            user_defaults["storage"] = params.get("storage", user_defaults["storage"])
             user_defaults["put_requests"] = params.get("put_requests", user_defaults["put_requests"])
             user_defaults["get_requests"] = params.get("get_requests", user_defaults["get_requests"])
 
-        storage_gb = user_defaults["storage_gb"]
+        storage = user_defaults["storage"]
         put_requests = user_defaults["put_requests"]
         get_requests = user_defaults["get_requests"]
 
-        print(f" Storage: {storage_gb} GB")
+        print(f" Storage: {storage} GB")
         print(f" PUT Requests: {put_requests} |  GET Requests: {get_requests}")
 
         results, total_storage_cost, total_put_cost, total_get_cost = calculate_s3_bucket_costs(

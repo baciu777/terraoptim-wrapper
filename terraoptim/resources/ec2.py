@@ -98,10 +98,8 @@ def suggest_alternatives(instance_type, hours_per_month, region, instance_catego
                 "monthly": monthly
             })
 
-    # Sort by price, then CPU, then memory
     candidates.sort(key=lambda x: (x["hourly"], x["vCPU"], int(x["memory"].split()[0])))
     index = next((i for i, c in enumerate(candidates) if c["name"] == instance_type), None)
-    # Select 2 cheaper and 2 stronger alternatives
     cheaper = candidates[max(0, index - 2):index]
     stronger = candidates[index + 1:index + 3]
 
@@ -132,7 +130,7 @@ def get_ec2_on_demand_price(instance_type, region):
             ServiceCode="AmazonEC2",
             Filters=[
                 {"Type": "TERM_MATCH", "Field": "instanceType", "Value": instance_type},
-                {"Type": "TERM_MATCH", "Field": "location", "Value": REGION_NAME_MAP.get(region, "US East (N. Virginia)")},#####put region
+                {"Type": "TERM_MATCH", "Field": "location", "Value": REGION_NAME_MAP.get(region, "US East (N. Virginia)")},
                 {"Type": "TERM_MATCH", "Field": "tenancy", "Value": "Shared"},
                 {"Type": "TERM_MATCH", "Field": "operatingSystem", "Value": "Linux"}
             ]

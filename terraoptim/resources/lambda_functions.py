@@ -168,12 +168,12 @@ def suggest_graviton_alternative(lambda_func, monthly_requests, avg_duration, re
     print(f"\n    ➤ Potential Graviton Savings:")
     print(f"       Architecture       | Total Monthly Cost")
     print(f"       -------------------|-------------------")
-    print(f"       x86_64             | ${current_cost}")
-    print(f"       arm64              | ${graviton_cost['total_cost']}")
+    print(f"       x86_64             | ${round(current_cost,3)}")
+    print(f"       arm64              | ${round(graviton_cost['total_cost'],3)}")
 
     if graviton_cost["total_cost"] < current_cost:
         savings = round(current_cost - graviton_cost["total_cost"], 4)
-        print(f"        You could save ~${savings}/month by switching to arm64.\n")
+        print(f"        You could save ~${round(savings,3)}/month by switching to arm64.\n")
     else:
         print("        No cost savings from switching to arm64 in this case.\n")
 
