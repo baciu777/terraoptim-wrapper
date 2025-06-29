@@ -277,7 +277,17 @@ def check_unused_ec2(days):
 
 def unused_main(params=None):
     try:
-        days = params.get("days") if params else DEFAULT_DAYS
+        user_defaults = {
+            "days": 30
+        }
+
+        allowed_keys = set(user_defaults.keys())
+        if isinstance(params, dict):
+            unknown_keys = set(params.keys()) - allowed_keys
+            if unknown_keys:
+                print(f"️ Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+            user_defaults["days"] = params.get("days", user_defaults["days"])
+        days = user_defaults["days"]
         print(f" Scanning for resources unused in the past {days} days...")
         check_unused_lambdas(days)
         check_unused_s3(days)

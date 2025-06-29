@@ -77,12 +77,10 @@ def get_lambda_price(region, architecture="x86_64"):
                         gb_sec_price = float(dim["pricePerUnit"]["USD"])
                     elif "requests" in desc.lower():
                         request_price = float(dim["pricePerUnit"]["USD"])
-
         return gb_sec_price, request_price
     except Exception as e:
         print(f"️  Failed to fetch lambda price")
         raise e
-    return None, None
 
 
 def estimate_lambda_cost(lambda_func, monthly_requests, avg_duration, region):
@@ -249,7 +247,7 @@ def lambda_main(terraform_data, params=None):
         if isinstance(params, dict):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
-                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+                print(f"️ Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
             user_defaults["invocations"] = params.get("invocations", user_defaults["invocations"])
             user_defaults["duration"] = params.get("duration", user_defaults["duration"])
 

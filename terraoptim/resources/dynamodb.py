@@ -333,7 +333,7 @@ def dynamodb_main(terraform_data=None, params=None):
         if isinstance(params, dict):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
-                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+                print(f"️ Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
             user_defaults["reads"] = params.get("reads", user_defaults["reads"])
             user_defaults["writes"] = params.get("writes", user_defaults["writes"])
             user_defaults["storage"] = params.get("storage", user_defaults["storage"])

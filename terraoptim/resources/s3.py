@@ -290,7 +290,7 @@ def s3_main(terraform_data=None, params=None):
         if isinstance(params, dict):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
-                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+                print(f"️ Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
             user_defaults["storage"] = params.get("storage", user_defaults["storage"])
             user_defaults["put_requests"] = params.get("put_requests", user_defaults["put_requests"])
             user_defaults["get_requests"] = params.get("get_requests", user_defaults["get_requests"])

@@ -231,22 +231,13 @@ def calculate_ec2_costs(instances, hours_per_month, region, instance_categories)
             total_spot += cost_monthly_spot
 
         suggest_alternatives(instance, hours_per_month, region, instance_categories)
-    return total_on_demand, total_spot
-
-
-
-def summarize_ec2_totals(total_on_demand, total_spot):
-    """
-    Print a summary of total estimated monthly costs for all EC2 instances.
-
-    Args:
-        total_on_demand (float): Total cost using on-demand pricing.
-        total_spot (float): Total cost using spot pricing.
-    """
     print(f" Total Estimated Monthly Cost For All Instances (On-Demand): ${round(total_on_demand, 3)}")
     print(f" Total Estimated Monthly Cost For All Instances (Spot):      ${round(total_spot, 3)}")
     print("\n More info: https://aws.amazon.com/ec2/pricing/")
     print("====================================================")
+
+
+
 
 def ec2_main(terraform_data, params=None):
     try:
@@ -265,7 +256,7 @@ def ec2_main(terraform_data, params=None):
         if isinstance(params, dict):
             unknown_keys = set(params.keys()) - allowed_keys
             if unknown_keys:
-                print(f"️ EC2 Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
+                print(f"️ Optimization Warning: Unrecognized parameter(s): {', '.join(unknown_keys)}")
 
             user_defaults["hours"] = params.get("hours", user_defaults["hours"])
 
@@ -274,7 +265,6 @@ def ec2_main(terraform_data, params=None):
 
         instance_categories = fetch_ec2_instance_types(region)
 
-        total_on_demand, total_spot = calculate_ec2_costs(instances, hours, region, instance_categories)
-        summarize_ec2_totals(total_on_demand, total_spot)
+        calculate_ec2_costs(instances, hours, region, instance_categories)
     except Exception as e:
         print(f"️ Error calculating ec2 optimization")
