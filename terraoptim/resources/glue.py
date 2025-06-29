@@ -49,7 +49,7 @@ def get_glue_price(region, worker_type="Standard"):
             ServiceCode="AWSGlue",
             Filters=[
                 {"Type": "TERM_MATCH", "Field": "location", "Value": location},
-               {"Type": "TERM_MATCH", "Field": "usageType", "Value": usage_type},
+                {"Type": "TERM_MATCH", "Field": "usageType", "Value": usage_type},
             ]
         )
         for price_item in response["PriceList"]:

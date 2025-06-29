@@ -141,7 +141,6 @@ def get_ec2_on_demand_price(instance_type, region):
             for term in price_data.get("terms", {}).get("OnDemand", {}).values():
                 for price_dimension in term.get("priceDimensions", {}).values():
                     description = price_dimension.get("description", "").lower()
-
                     if "on demand" in description and "linux" in description \
                             and "sql" not in description and "reservation" not in description:
                         return float(price_dimension["pricePerUnit"]["USD"])
@@ -181,7 +180,6 @@ def get_spot_price(instance_type, region):
 
         prices = [float(item["SpotPrice"]) for item in response["SpotPriceHistory"]]
         if prices:
-            # Average over available records in the past 10 hours
             avg_hourly_price = sum(prices) / len(prices)
             return avg_hourly_price
     except Exception as e:
@@ -218,6 +216,8 @@ def calculate_ec2_costs(instances, hours_per_month, region, instance_categories)
 
         if is_spot:
             print("️  Using Spot Instances – consider switching to On-Demand if stability is needed.")
+        else:
+            print("️  Using On-Demand Instances – consider switching to Spot if stability is NOT needed.")
 
         cost_monthly_on_demand = round(on_demand_price * hours_per_month, 3) if on_demand_price else "N/A"
         cost_monthly_spot = round(spot_price * hours_per_month, 3) if spot_price else "N/A"

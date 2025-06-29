@@ -178,7 +178,7 @@ def suggest_graviton_alternative(lambda_func, monthly_requests, avg_duration, re
 
 def print_lambda_function_costs(cost_results, region):
     """Print detailed cost breakdown per Lambda function."""
-    for i,cost in enumerate(cost_results):
+    for i, cost in enumerate(cost_results):
         print(f"\n️ Function: {i+1} ({cost['architecture']})")
         print(f"    Memory: {cost['memory']} MB | Avg Duration: {cost['duration']} s")
         print(f"    Invocations: {cost['requests']} / month")
