@@ -55,10 +55,10 @@ def get_lambda_price(region, architecture="x86_64"):
             {"Type": "TERM_MATCH", "Field": "location", "Value": location},
             {"Type": "TERM_MATCH", "Field": "servicename", "Value": "AWS Lambda"},
         ]
-        gb_sec_desc = "AWS Lambda - Total Compute (Provisioned) -"
+        gb_sec_desc = "AWS Lambda - Total Compute -"
 
         if architecture == "arm64":
-            gb_sec_desc = "AWS Lambda - Total Compute (Provisioned) for ARM -"
+            gb_sec_desc = "AWS Lambda - Total Compute for ARM -"
         response = client.get_products(
             ServiceCode="AWSLambda",
             Filters=filters,
@@ -73,9 +73,9 @@ def get_lambda_price(region, architecture="x86_64"):
 
                 for dim in term["priceDimensions"].values():
                     desc = dim["description"].lower()
-                    if gb_sec_desc.lower() in desc.lower():
+                    if gb_sec_desc.lower() in desc.lower() and "tier-1" in desc.lower():
                         gb_sec_price = float(dim["pricePerUnit"]["USD"])
-                    elif "requests" in desc.lower():
+                    elif "requests" in desc.lower() in desc.lower():
                         request_price = float(dim["pricePerUnit"]["USD"])
         return gb_sec_price, request_price
     except Exception as e:

@@ -215,9 +215,9 @@ def calculate_ec2_costs(instances, hours_per_month, region, instance_categories)
         print(f"    Spot Price:      {spot_price} USD/hour")
 
         if is_spot:
-            print("️  Using Spot Instances – consider switching to On-Demand if stability is needed.")
+            print("️ Using Spot Instances – consider switching to On-Demand if stability is needed.")
         else:
-            print("️  Using On-Demand Instances – consider switching to Spot if stability is NOT needed.")
+            print("   Using On-Demand Instances – consider switching to Spot if stability is NOT needed.")
 
         cost_monthly_on_demand = round(on_demand_price * hours_per_month, 3) if on_demand_price else "N/A"
         cost_monthly_spot = round(spot_price * hours_per_month, 3) if spot_price else "N/A"
