@@ -41,7 +41,6 @@ def get_dynamodb_price(region, usage_type, filter_description=False):
     pricing = boto3.client("pricing", region_name="us-east-1")
     location = REGION_NAME_MAP.get(region, "US East (N. Virginia)")
     region_prefix = REGION_CODE_MAP.get(region, "")
-    print(region_prefix)
     if region_prefix and region != "us-east-1":
         usage_type = f"{region_prefix}-{usage_type}"
 
@@ -259,10 +258,10 @@ def print_dynamodb_table_costs(results):
     """
     for r in results:
         if r["skipped"]:
-            print(f" Table {r['index']} | ️ Unknown billing mode. Skipping...\n")
+            print(f" Table {r['index']+1} | ️ Unknown billing mode. Skipping...\n")
             continue
 
-        print(f"  Table {r['index']} | Mode: {r['mode']}")
+        print(f"  Table {r['index']+1} | Mode: {r['mode']}")
         print(f"    Reads: {r['read']} | Writes: {r['write']} | Storage: {r['storage']} GB")
         print(f"    Cost: Read ${r['cost_read']}, Write ${r['cost_write']}, "
               f"Storage ${r['cost_storage']}, Total ${r['subtotal']}\n")
